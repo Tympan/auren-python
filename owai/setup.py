@@ -15,7 +15,7 @@ import version
 
 __version__ = version.version()
 
-install_requires = ["numpy", "scipy", "matplotlib", "sympy"]
+install_requires = ["numpy", "scipy", "matplotlib", "sympy", "jupyterlab"]
 
 extras_require = {
     "dev": [
