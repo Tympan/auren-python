@@ -7,6 +7,7 @@ except ImportError:
     from yaml import Loader
 
 from scipy.io import wavfile
+import soundfile
 import numpy as np
 
 
@@ -49,6 +50,8 @@ def load_wav(filename : str, frequency_domain : bool=False) -> tuple[np.ndarray,
     numpy.ndarray
         The waveform data as a NumPy array. If `frequency_domain` is True, the array will contain the frequency domain representation of the signal, otherwise it will contain the time domain representation.
         If a ".dat" file is also present, the data will be scaled by the value in the .dat file.
+    int
+        The samplerate
 
     See Also
     --------
@@ -58,10 +61,16 @@ def load_wav(filename : str, frequency_domain : bool=False) -> tuple[np.ndarray,
     # Start with the most challenging tip and then generalize later?
     filename_dat = filename.replace('.wav', '.dat').replace('.WAV', '.dat')
 
-    samplerate, data = wavfile.read(filename)
+    try:
+        samplerate, data = wavfile.read(filename)
+    except ValueError as e:
+        print ("Couldn't read file using scipy, falling back to soundfile. This was the error ", str(e))
+        data, samplerate = soundfile.read(filename)
+
 
     try:
         scalingdata = np.genfromtxt(filename_dat)
+        print("Using scaling data from ", filename_dat)
     except:
         scalingdata = np.ones(data.shape[1])
 
@@ -72,6 +81,7 @@ def load_wav(filename : str, frequency_domain : bool=False) -> tuple[np.ndarray,
         # Create the time array
         n = data.shape[0]
         t = np.arange(n) / samplerate
-        return t, data
+        return t, data, samplerate
 
-    return to_fourier(data, samplerate)
+    f, d = to_fourier(data, samplerate)
+    return f, d, samplerate
