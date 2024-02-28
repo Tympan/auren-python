@@ -13,6 +13,7 @@ import numpy as np
 
 from owai.core.signal_processing_utils import to_fourier
 
+
 def load_test_data(filename: str) -> dict:
     """
     Load test metadata data from a file into a dictionary.
@@ -28,11 +29,12 @@ def load_test_data(filename: str) -> dict:
         A dictionary containing the loaded test data.
     """
     test_data = None
-    with open(filename, 'r') as fid:
+    with open(filename, "r") as fid:
         test_data = yaml.load(fid, Loader)
     return test_data
 
-def load_wav(filename : str, frequency_domain : bool=False) -> tuple[np.ndarray, np.ndarray]:
+
+def load_wav(filename: str, frequency_domain: bool = False) -> tuple[np.ndarray, np.ndarray]:
     """
     Load waveform data from a WAV file.
 
@@ -59,23 +61,28 @@ def load_wav(filename : str, frequency_domain : bool=False) -> tuple[np.ndarray,
     """
 
     # Start with the most challenging tip and then generalize later?
-    filename_dat = filename.replace('.wav', '.dat').replace('.WAV', '.dat')
+    filename_dat = filename.replace(".wav", ".dat").replace(".WAV", ".dat")
 
     try:
         samplerate, data = wavfile.read(filename)
     except ValueError as e:
-        print ("Couldn't read file using scipy, falling back to soundfile. This was the error ", str(e))
+        print(
+            "Couldn't read file using scipy, falling back to soundfile. This was the error ",
+            str(e),
+        )
         data, samplerate = soundfile.read(filename)
-
 
     try:
         scalingdata = np.genfromtxt(filename_dat)
         print("Using scaling data from ", filename_dat)
-    except:
+    except FileNotFoundError:
         scalingdata = np.ones(data.shape[1])
 
     # Apply the scaling
-    data *= scalingdata
+    try:
+        data *= scalingdata
+    except np.core._exceptions.UFuncTypeError:
+        data = data * scalingdata
 
     if not frequency_domain:
         # Create the time array

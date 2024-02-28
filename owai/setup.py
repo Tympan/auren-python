@@ -15,7 +15,16 @@ import version
 
 __version__ = version.version()
 
-install_requires = ["numpy", "scipy", "matplotlib", "sympy", "jupyterlab", "ipympl", "pint", "soundfile"]
+install_requires = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "sympy",
+    "jupyterlab",
+    "ipympl",
+    "pint",
+    "soundfile",
+]
 
 extras_require = {
     "dev": [
