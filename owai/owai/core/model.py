@@ -87,6 +87,10 @@ class Model:
             The wave number k = 2πf / c (1 - iα)
         """
         return np.pi * 2 * f / self.sound_speed * (1 - 1j * self.absorption_loss)
+    #     return np.pi * 2 * f / self.sound_speed
+
+    # def alpha(self, f):
+    #     return self.k(f) * self.absorption_loss
 
 def straight_tube_derivation():
     """Derives the equations for the coefficients of the forwards (+x) (A) and reverse (-x) B waves given
@@ -133,8 +137,11 @@ class StraightTube(Model):
             The complex velocity in frequency space evaluated at the input frequency and positions
         """
         k = self.k(f)
+        # alpha = self.alpha(f)
         B = self.B(k)
         U = (self.A(k, B=B) * np.exp(-1j * k * x) - B * np.exp(1j * k * x)) / self.z0
+        # U = (self.A(k, B=B) * np.exp(-1j * k * x) * np.exp(-alpha * x) \
+        #      - B * np.exp(1j * k * x) * np.exp(-alpha * (self.L - x))) / self.z0
         return U
 
     def p(self, f, x):
@@ -153,8 +160,11 @@ class StraightTube(Model):
             The complex pressure in frequency space evaluated at the input frequency and positions
         """
         k = self.k(f)
+        # alpha = self.alpha(f)
         B = self.B(k)
         P = self.A(k, B=B) * np.exp(-1j * k * x) + B * np.exp(1j * k * x)
+        # P = self.A(k, B=B) * np.exp(-1j * k * x) * np.exp(-alpha * x) \
+            # + B * np.exp(1j * k * x) * np.exp(-alpha * (self.L - x))
         return P
 
     def A(self, k, x=None, B=None):
