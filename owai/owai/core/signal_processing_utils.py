@@ -19,7 +19,7 @@ def to_fourier(time_series: np.ndarray, samplerate: float) -> tuple[np.ndarray, 
     fourier : np.ndarray of shape (n_frequencies, n_channels)
         The Fourier transform of the input time series data (complex)
     """
-    n = time_series.size
+    n = time_series.shape[-1]
     frequency = np.fft.fftfreq(n, 1 / samplerate)[: n // 2]  # frequency
     fourier = np.fft.fft(time_series, n, axis=-1)
 

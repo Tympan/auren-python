@@ -65,6 +65,8 @@ def load_wav(filename: str, frequency_domain: bool = False) -> tuple[np.ndarray,
 
     try:
         samplerate, data = wavfile.read(filename)
+        if data.dtype.kind == 'i':
+            data = data / (np.iinfo(data.dtype).max + 1)  # To match Matlab
     except ValueError as e:
         print(
             "Couldn't read file using scipy, falling back to soundfile. This was the error ",

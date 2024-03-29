@@ -14,7 +14,8 @@ class Model:
     """
     rho = 1.225 * units.kg / units.m ** 3  # Density of fluid (air by default)
     sound_speed = 343 * units.m / units.s # Speed of sound in fluid (Air at 20°C by default)
-    absorption_loss = 0 # Absorption loss -- imaginary value of K
+    absorption_loss = 0 # Absorption loss -- imaginary value of K re f
+    absorption_loss2 = 0 # Absorption loss -- imaginary value of K re f^3
 
     def u(self, f, x):
         """Return value of velocity(u) at given frequencies and x positions in the tube
@@ -86,7 +87,8 @@ class Model:
         np.ndarray
             The wave number k = 2πf / c (1 - iα)
         """
-        return np.pi * 2 * f / self.sound_speed * (1 - 1j * self.absorption_loss)
+        omega = np.pi * 2 * f / self.sound_speed
+        return omega * (1 - 1j * (self.absorption_loss + self.absorption_loss2 * omega.magnitude**2))
     #     return np.pi * 2 * f / self.sound_speed
 
     # def alpha(self, f):
@@ -110,12 +112,13 @@ def straight_tube_derivation():
 
 class StraightTube(Model):
     """ Generates solutions for tube of constant cross section (straight) """
-    def __init__(self, L, P0, PL, R0, RL, rho=None, sound_speed=None):
+    def __init__(self, L, P0, PL, R0, RL, rho=None, sound_speed=None, absorption_loss=0):
         self.L = L
         self.R0 = R0
         self.RL = RL
         self.P0 = P0
         self.PL = PL
+        self.absorption_loss = absorption_loss
         if rho is not None:
             self.rho = rho
         if sound_speed is not None:
@@ -207,7 +210,7 @@ class StraightTube(Model):
         B = (np.exp(1j * k * L) * PL + RL * P0) / (np.exp(1j * k * 2 * L) - R0 * RL )
         return B
 
-    def widget_frequency(self, f, xs, val="z", fig_num=1, figkwargs={}, params={}):
+    def widget_frequency(self, f, xs, other_plot=None, val="z", fig_num=1, figkwargs={}, params={}):
         """Generated an ipywidgets tool to visualize the quantity in frequency space
 
         Parameters
@@ -230,8 +233,10 @@ class StraightTube(Model):
                 * "R0": Initial value for R0, reflection coefficient at x=0
                 * "RL": Initial value for RL, reflection coefficient at x=L
                 * "alpha": Initial value for alpha, the absorption coefficient (see self.k)
+                * "alpha2": Initial value for alpha, the absorption coefficient (see self.k)
                 * "P0": Initial value for P0, whether there is a source at x=0
                 * "PL": Initial value for PL, whether there is a source at x=0
+                * "xoff": Initial value for x position offset
 
         Returns
         -------
@@ -251,6 +256,9 @@ class StraightTube(Model):
             fig, ax = plt.subplots(2, 1, sharex=True, num=fig_num, **figkwargs)
 
             for x in xs:
+                if other_plot is not None:
+                    ax[0].loglog(f.magnitude, np.abs(other_plot), 'k', alpha=0.5)
+                    ax[1].semilogx(f.magnitude, np.rad2deg(np.angle(other_plot)), 'k', alpha=0.5)
                 v = func(f, x).magnitude
                 h0 = ax[0].loglog(f.magnitude, np.abs(v))[0]
                 h1 = ax[1].semilogx(f.magnitude, np.rad2deg(np.angle(v)))[0]
@@ -264,16 +272,18 @@ class StraightTube(Model):
 
         def update_plot(*args, **kwargs):
             self.L = L.value * Lunits
+            self.sound_speed = (T.value * 0.606 + 331.3) * units.m / units.s
             self.R0 = R0.value
             self.RL = RL.value
             self.P0 = P0.value * 1.0
             self.PL = PL.value * 1.0
             self.absorption_loss = alpha.value
+            self.absorption_loss2 = alpha2.value
             my_max = -np.inf
             my_min = np.inf
             with plot_out:
                 for h, x in zip(handles, xs):
-                    v = func(f, x).magnitude
+                    v = func(f, x + xoff.value * x.units).magnitude
                     my_max = max(my_max, np.abs(v).max())
                     my_min = min(my_min, np.abs(v).min())
                     h[0].set_ydata(np.abs(v))
@@ -287,20 +297,27 @@ class StraightTube(Model):
             description="Length",
         )
         L.step = (L.max - L.min) / 256
+        # see https://en.wikipedia.org/wiki/Speed_of_sound#Details  -- 0.606 (m/s) / °C
+        T = ipywidgets.FloatSlider(value=params.get("T", 21.5), min=0, max=40, step=0.1, description=r"$Temperature$")
         R0 = ipywidgets.FloatSlider(value=params.get("R0", self.R0), min=0, max=1, step=0.01, description=r"$R_{0}$")
         RL = ipywidgets.FloatSlider(value=params.get("RL", self.RL), min=0, max=1, step=0.01, description=r"$R_{L}$")
-        alpha = ipywidgets.FloatSlider(value=params.get("alpha", self.absorption_loss), min=0, max=10, step=.025, description=r"$\alpha_{loss}$")
+        alpha = ipywidgets.FloatSlider(value=params.get("alpha", self.absorption_loss), min=0, max=0.1, step=0.1 / 128, description=r"$\alpha_{loss}$")
+        alpha2 = ipywidgets.FloatSlider(value=params.get("alpha2", self.absorption_loss2), min=0, max=0.000001/3, step=.000001/3 / 128, description=r"$\alpha_{loss,2}$")
         P0 = ipywidgets.Checkbox(value=params.get("P0", self.P0), description=r"$P_0$")
         PL = ipywidgets.Checkbox(value=params.get("PL", self.PL), description=r"$P_L$")
+        xoff = ipywidgets.FloatSlider(value=params.get("x_off", 0), min=-2, max=2, step=0.1, description=r"x-position offset")
 
         L.observe(update_plot)
+        T.observe(update_plot)
         R0.observe(update_plot)
         RL.observe(update_plot)
         alpha.observe(update_plot)
+        alpha2.observe(update_plot)
         P0.observe(update_plot)
         PL.observe(update_plot)
+        xoff.observe(update_plot)
 
-        container = ipywidgets.VBox([ipywidgets.HBox([R0, RL, alpha, P0, PL]), L, plot_out])
+        container = ipywidgets.VBox([ipywidgets.VBox([ipywidgets.HBox([R0, RL,alpha]), ipywidgets.HBox([P0, PL, alpha2])]), ipywidgets.HBox([T, L, xoff]), plot_out])
 
         # For debugging
         self.handles = handles
