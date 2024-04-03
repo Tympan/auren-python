@@ -109,6 +109,43 @@ def straight_tube_derivation():
     print ("A =", a)
     print ("B =", b)
 
+def straight_tube_derivation_from_measurements():
+    """Derives the equations for the coefficients of the forwards (+x) (A) and reverse (-x) B waves given
+    the tube geometry, and pressure measured at two points.
+
+    The solution for the pressure is: P = Ae^{ikx} + Be^{-ikx}
+    """
+    A, B, p0, p1, k, x0, x1 = sym.symbols("A, B, p0, p1, k, x0, x1")
+    eqn0 = A * sym.exp(-1j*k*x0) + B * sym.exp(1j*k*x0) - p0
+    eqn1 = A * sym.exp(-1j*k*x1) + B * sym.exp(1j*k*x1) - p1
+    s = sym.solve([eqn0, eqn1], [A, B])
+    a = sym.solve(eqn0, A)[0]
+    eqn2 = eqn1.subs(A, a)
+    b = sym.solve(eqn2, B)[0]
+    print ("A =", a)
+    print ("B =", b)
+
+def straight_tube_calibration_from_measurements():
+    """Derives the equations for the coefficients of the forwards (+x) (A) and reverse (-x) B waves given
+    the tube geometry, and pressure measured at two points.
+
+    The solution for the pressure is: P = Ae^{ikx} + Be^{-ikx}
+    """
+    Aa, Ab, Ba, Bb, c0, c1, p0a, p0b, p1a, p1b, p2a, p2b, k, x0, x1, x2 = sym.symbols(
+        "Aa, Ab, Ba, Bb, c0, c1, p0a, p0b p1a, p1b, p2a, p2b, k, x0, x1, x2")
+    eqn0a = Aa * sym.exp(-1j*k*x0) + Ba * sym.exp(1j*k*x0) - p0a * c0
+    eqn1a = Aa * sym.exp(-1j*k*x1) + Ba * sym.exp(1j*k*x1) - p1a * c1
+    eqn2a = Aa * sym.exp(-1j*k*x2) + Ba * sym.exp(1j*k*x2) - p2a
+    eqn0b = Ab * sym.exp(-1j*k*x0) + Bb * sym.exp(1j*k*x0) - p0b * c0
+    eqn1b = Ab * sym.exp(-1j*k*x1) + Bb * sym.exp(1j*k*x1) - p1b * c1
+    eqn2b = Ab * sym.exp(-1j*k*x2) + Bb * sym.exp(1j*k*x2) - p2b
+    s = sym.solve([eqn0a, eqn1a, eqn0b, eqn1b, eqn2a, eqn2b], [Aa, Ab, Ba, Bb, c0, c1])
+    a = sym.solve(eqn0, A)[0]
+    eqn2 = eqn1.subs(A, a)
+    b = sym.solve(eqn2, B)[0]
+    print ("A =", a)
+    print ("B =", b)
+
 
 class StraightTube(Model):
     """ Generates solutions for tube of constant cross section (straight) """
@@ -170,6 +207,7 @@ class StraightTube(Model):
             # + B * np.exp(1j * k * x) * np.exp(-alpha * (self.L - x))
         return P
 
+
     def A(self, k, x=None, B=None):
         """Computes the complex forward wave amplitude coefficient
 
@@ -208,6 +246,63 @@ class StraightTube(Model):
         """
         L, R0, RL, P0, PL = self.L, self.R0, self.RL, self.P0, self.PL
         B = (np.exp(1j * k * L) * PL + RL * P0) / (np.exp(1j * k * 2 * L) - R0 * RL )
+        return B
+
+    def u_measured(self, f, x, x0, x1, p0, p1, A=None, B=None):
+        """Return value of pressure (p) at given frequencies and x positions in the straight tube
+
+        Parameters
+        ----------
+        f : np.ndarray * pint.Hz (or other unit)
+            Frequency
+        x : np.ndarray * pint.mm (or other unit)
+            Location in tube to evaluate velocity
+
+        Return
+        -------
+        np.ndarray(dtype=complex)
+            The complex pressure in frequency space evaluated at the input frequency and positions
+        """
+        k = self.k(f)
+        if B is None:
+            B = self.B_measured(k, x, x0, x1, p0, p1)
+        if A is None:
+            A = self.A_measured(k, x, x0, x1, p0, p1, B)
+        U = (A * np.exp(-1j * k * x) - B * np.exp(1j * k * x)) / self.z0
+        return U
+
+    def p_measured(self, f, x, x0, x1, p0, p1, A=None, B=None):
+        """Return value of pressure (p) at given frequencies and x positions in the straight tube
+
+        Parameters
+        ----------
+        f : np.ndarray * pint.Hz (or other unit)
+            Frequency
+        x : np.ndarray * pint.mm (or other unit)
+            Location in tube to evaluate velocity
+
+        Return
+        -------
+        np.ndarray(dtype=complex)
+            The complex pressure in frequency space evaluated at the input frequency and positions
+        """
+        k = self.k(f)
+        if B is None:
+            B = self.B_measured(k, x, x0, x1, p0, p1)
+        if A is None:
+            A = self.A_measured(k, x, x0, x1, p0, p1, B)
+        P = A * np.exp(-1j * k * x) + B * np.exp(1j * k * x)
+        return P
+
+    def A_measured(self, k, x, x0, x1, p0, p1, B=None):
+        if B is None:
+            B = self.B_measured(k, x, x0, x1, p0, p1)
+
+        A = (-B * np.exp(1j * k * x0) + p0) * np.exp(1j * k * x0)
+        return A
+
+    def B_measured(self, k, x, x0, x1, p0, p1):
+        B = (p0 * np.exp(1j * k * x0) - p1 * np.exp(1j * k * x1)) / (np.exp(2.0 * 1j * k * x0) - np.exp(2.0 * 1j * k * x1))
         return B
 
     def widget_frequency(self, f, xs, other_plot=None, val="z", fig_num=1, figkwargs={}, params={}):
