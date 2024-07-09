@@ -125,7 +125,7 @@ def straight_tube_derivation_from_measurements():
     print ("A =", a)
     print ("B =", b)
 
-def straight_tube_calibration_from_measurements():
+def straight_tube_calibration_from_measurements_direct():
     """Derives the equations for the coefficients of the forwards (+x) (A) and reverse (-x) B waves given
     the tube geometry, and pressure measured at two points.
 
@@ -145,6 +145,31 @@ def straight_tube_calibration_from_measurements():
     b = sym.solve(eqn2, B)[0]
     print ("A =", a)
     print ("B =", b)
+
+def two_diameter_tube_from_measurements_deriviation():
+    A1, A2, B1, B2, x0, x1, xp, z1, z2, k, x, p0, p1 = \
+        sym.symbols("A1, A2, B1, B2, x0, x1, xp, z1, z2, k, x, p0, p1")
+    e = sym.exp
+    eqn0 = A1 * e(-1j*k*x0) + B1 * e(1j*k*x0) - p0
+    eqn1 = A1 * e(-1j*k*x1) + B1 * e(1j*k*x1) - p1
+    # Continuity of pressure across interface
+    eqn2 = A1 * e(-1j*k*xp) + B1 * e(1j*k*xp) - (A2 * e(-1j*k*xp) + B2 * e(1j*k*xp))
+    # Continuity of volume flow rate across interface
+    eqn3 = A1 / z1 * e(-1j*k*xp) - B1 / z1 * e(1j*k*xp) - (A2 / z2 * e(-1j*k*xp) - B2 / z2 * e(1j*k*xp))
+    a1 = sym.solve(eqn0, A1)[0]
+    eqn1a = eqn1.subs(A1, a1)
+    b1 = sym.solve(eqn1a, B1)[0]
+    a2 = sym.solve(eqn2, A2)[0]
+    eqn3a = eqn3.subs(A2, a2)
+    b2 = sym.solve(eqn3a, B2)[0]
+
+    sol = sym.solve([eqn0, eqn1, eqn2, eqn3], (A1, B1, A2, B2))
+
+    print ("A1 = ", a1)
+    print ("B1 =", b1)
+    print ("A2 =", a2)
+    print ("B2 =", b2)
+
 
 
 class StraightTube(Model):
@@ -418,3 +443,138 @@ class StraightTube(Model):
         self.handles = handles
         self.ax = ax
         return container
+
+class TwoDiameterTube(StraightTube):
+    D0 = None
+    D1 = None
+    xp = None
+    x0 = None
+    x1 = None
+
+    @property
+    def za0(self):
+        area0 = 0.25 * np.pi * self.D0 **2
+        return self.z0 / area0
+
+    @property
+    def za1(self):
+        area1 = 0.25 * np.pi * self.D1 **2
+        return self.z0 / area1
+
+
+    def __init__(self, x0, x1, xp, D0, D1, rho=None, sound_speed=None, absorption_loss=0):
+        """Constructor for Two-Diameter Tube model
+
+        Parameters
+        ----------
+        x0 : float
+            Distance from the reference x=0 location, to where the p0 pressure is measured, uses units
+        x1 : float
+            Distance from the reference x=0 location, to where the p1 pressure is measured, uses units
+        xp : float
+            Distance from the reference x=0 location, to where the diameter changes from
+            D0 to D1, uses units
+        D0 : float
+            Diameter of the first tube, uses units
+        D1 : float
+            Diameter of the second tube, uses units
+        rho : float, optional
+            Density of medium, by default uses density of air in SI units
+        sound_speed : float, optional
+            Sound speed in medium, by default uses air in SI units
+        absorption_loss : float, optional
+            Absorption loss coefficient, by default 0
+        """
+        self.xp = xp
+        self.x0 = x0
+        self.x1 = x1
+        self.D0 = D0
+        self.D1 = D1
+        self.absorption_loss = absorption_loss
+        if rho is not None:
+            self.rho = rho
+        if sound_speed is not None:
+            self.sound_speed = sound_speed
+
+    def A0_measured(self, k, p0, p1, B0=None):
+        return self.A_measured(k, None, self.x0, self.x1, p0, p1, B0)
+
+    def B0_measured(self, k, p0, p1):
+        return self.B_measured(k, None, self.x0, self.x1, p0, p1)
+
+    def A1_measured(self, k, A0, B0, B1):
+        A2 = A0 + B0 * np.exp(2j * k * self.xp) - B1 * np.exp(2j * k * self.xp)
+        return A2
+
+    def B1_measured(self, k, A0, B0):
+        B1 =  0.5 * A0 * np.exp(-2j * k * self.xp) \
+            - 0.5 * A0 * self.za1 * np.exp(-2j * k * self.xp) / self.za0\
+            + 0.5 * B0 + 0.5 * B0 * self.za1 / self.za0
+        return B1
+
+    def u_measured(self, f, x, p0, p1, A0=None, B0=None, A1=None, B1=None):
+        """Return value of pressure (p) at given frequencies and x positions in the straight tube
+
+        Parameters
+        ----------
+        f : np.ndarray * pint.Hz (or other unit)
+            Frequency
+        x : np.ndarray * pint.mm (or other unit)
+            Location in tube to evaluate velocity
+        p0 : np.ndarray * pint.Pa (or other unit)
+            Pressure measured at self.x0
+        p1 : np.ndarray * pint.Pa (or other unit)
+            Pressure measured at self.x1
+
+        Return
+        -------
+        np.ndarray(dtype=complex)
+            The complex pressure in frequency space evaluated at the input frequency and positions
+        """
+        k = self.k(f)
+        if B0 is None:
+            B0 = self.B0_measured(k, p0, p1)
+        if A0 is None:
+            A0 = self.A0_measured(k, p0, p1, B0)
+        if x <= self.xp:
+            # still in the D0 tube, proceed as usual
+            return (A0 * np.exp(-1j * k * x) - B0 * np.exp(1j * k * x)) / self.z0
+
+        # Beyond the gap, now we need A1/B1
+        if B1 is None:
+            B1 = self.B1_measured(k, A0, B0)
+        if A1 is None:
+            A1 = self.A1_measured(k, A0, B0, B1)
+        return (A1 * np.exp(-1j * k * x) - B1 * np.exp(1j * k * x)) / self.z0
+
+
+    def p_measured(self, f, x, p0, p1, A0=None, B0=None, A1=None, B1=None):
+        """Return value of pressure (p) at given frequencies and x positions in the straight tube
+
+        Parameters
+        ----------
+        f : np.ndarray * pint.Hz (or other unit)
+            Frequency
+        x : np.ndarray * pint.mm (or other unit)
+            Location in tube to evaluate velocity
+
+        Return
+        -------
+        np.ndarray(dtype=complex)
+            The complex pressure in frequency space evaluated at the input frequency and positions
+        """
+        k = self.k(f)
+        if B0 is None:
+            B0 = self.B0_measured(k, p0, p1)
+        if A0 is None:
+            A0 = self.A0_measured(k, p0, p1, B0)
+        if x <= self.xp:
+            # still in the D0 tube, proceed as usual
+            return A0 * np.exp(-1j * k * x) + B0 * np.exp(1j * k * x)
+
+        # Beyond the gap, now we need A1/B1
+        if B1 is None:
+            B1 = self.B1_measured(k, A0, B0)
+        if A1 is None:
+            A1 = self.A1_measured(k, A0, B0, B1)
+        return A1 * np.exp(-1j * k * x) + B1 * np.exp(1j * k * x)*mnio
