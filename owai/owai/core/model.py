@@ -577,4 +577,4 @@ class TwoDiameterTube(StraightTube):
             B1 = self.B1_measured(k, A0, B0)
         if A1 is None:
             A1 = self.A1_measured(k, A0, B0, B1)
-        return A1 * np.exp(-1j * k * x) + B1 * np.exp(1j * k * x)*mnio
+        return A1 * np.exp(-1j * k * x) + B1 * np.exp(1j * k * x)
