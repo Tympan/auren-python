@@ -94,3 +94,61 @@ def load_wav(filename: str, frequency_domain: bool = False) -> tuple[np.ndarray,
 
     f, d = to_fourier(data, samplerate)
     return f, d, samplerate
+
+def save_calibration_data(path : str, calibration_data : dict, convert_array_to_list : bool=False) -> str:
+    """Saves calibration data
+
+    Parameters
+    ----------
+    path : str
+        Folder to save calibration data
+    calibration_data : dict
+        Dictionary of calibration data
+    convert_array_to_list : bool, optional
+        If True, all ndarrays will be converted to lists of numbers, by default False
+
+    Returns
+    -------
+    str
+        Actual filename saved to. This is automatically time-stamped.
+    """
+    date = str(np.datetime64("now")).replace(':',".")
+    filename = os.path.join(path, "calibration_" + date + ".yaml")
+    # Convert any numpy arrays to lists
+    def _arr_to_list(d):
+        new_d = d.copy()
+        for k, v in d.items():
+            if isinstance(v, dict):
+                new_d[k] = _arr_to_list(v)
+            elif isinstance(v, np.ndarray):
+                new_d[k] = v.tolist()
+        return new_d
+    if convert_array_to_list:
+        cd = _arr_to_list(calibration_data)
+    else:
+        cd = calibration_data
+    with open(filename, 'w', encoding='utf-8') as fid:
+        yaml.dump(cd, fid, allow_unicode=True)
+    return filename
+
+def write_wav(path : str, signal :  np.ndarray, samplerate : float, dtype=None):
+    """Writes a wavefile to disk, automatically converting to the required dtype
+
+    Parameters
+    ----------
+    path : str
+        Path where to save file
+    signal : np.ndarray
+        Signal to save
+    samplerate : float
+        Samplerate
+    dtype : np.dtype, optional
+        Datatype for saving the file, by default None
+    """
+    if dtype is None:
+        dtype = signal.dtype
+    if np.issubdtype(dtype, np.integer) and not np.issubdtype(signal.dtype, np.integer):
+        amplitude = np.iinfo(dtype).max
+    else:
+        amplitude = 1
+    wavfile.write(path, samplerate, (signal * amplitude).astype(dtype))
