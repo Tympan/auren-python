@@ -1,5 +1,6 @@
 import os
 import yaml
+import json
 
 try:
     from yaml import CLoader as Loader
@@ -95,7 +96,7 @@ def load_wav(filename: str, frequency_domain: bool = False) -> tuple[np.ndarray,
     f, d = to_fourier(data, samplerate)
     return f, d, samplerate
 
-def save_calibration_data(path : str, calibration_data : dict, convert_array_to_list : bool=False) -> str:
+def save_calibration_data(path : str, calibration_data : dict, convert_array_to_list : bool=False, fmt="json") -> str:
     """Saves calibration data
 
     Parameters
@@ -113,7 +114,7 @@ def save_calibration_data(path : str, calibration_data : dict, convert_array_to_
         Actual filename saved to. This is automatically time-stamped.
     """
     date = str(np.datetime64("now")).replace(':',".")
-    filename = os.path.join(path, "calibration_" + date + ".yaml")
+    filename = os.path.join(path, "calibration_" + date + "." + fmt)
     # Convert any numpy arrays to lists
     def _arr_to_list(d):
         new_d = d.copy()
@@ -127,8 +128,14 @@ def save_calibration_data(path : str, calibration_data : dict, convert_array_to_
         cd = _arr_to_list(calibration_data)
     else:
         cd = calibration_data
+
     with open(filename, 'w', encoding='utf-8') as fid:
-        yaml.dump(cd, fid, allow_unicode=True)
+        if fmt == 'json':
+            json.dump(cd, fid)
+        elif fmt == 'yaml':
+            yaml.dump(cd, fid, allow_unicode=True)
+        else:
+            raise ValueError()
     return filename
 
 def write_wav(path : str, signal :  np.ndarray, samplerate : float, dtype=None):
