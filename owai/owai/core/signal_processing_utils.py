@@ -241,7 +241,7 @@ def trim_signal_mean_amplitude(
         return slc
     return data[..., slc]
 
-def make_chirp(times: np.ndarray, f0 : float, f1 : float, amplitude_func=None, phi : float=0) -> np.ndarray:
+def make_chirp(times: np.ndarray, f0 : float, f1 : float, amplitude_func=None, phi : float=0, return_freq: bool=False) -> np.ndarray:
     """Generates a logarithmic/exponential chirp in the time domain
 
     Parameters
@@ -256,6 +256,8 @@ def make_chirp(times: np.ndarray, f0 : float, f1 : float, amplitude_func=None, p
         function of frequency -- used to modulate amplitude of the chirp depending on the current frequency, by default uses amplitude of 1
     phi : int, optional
         Phase offset in radians, by default 0
+    return_freq : bool, optional
+        Default is False. If True, also returns the frequency as a function of time for the chirp as the SECOND argument
 
     Returns
     -------
@@ -270,6 +272,8 @@ def make_chirp(times: np.ndarray, f0 : float, f1 : float, amplitude_func=None, p
     beta = t1 / np.log(f1 / f0)
     phase = 2 * np.pi * beta * (freq - f0)  # -f0 is a phase shift because scipy uses cos and wikipedia uses sin
     signal = amplitude_func(freq) * np.cos(phase + phi)
+    if return_freq:
+        return signal, freq
     return signal
 
 
