@@ -1,4 +1,11 @@
-from .calibration import RawData
+from .calibration import (
+    RawData,
+    RawCalibrationData,
+    FileMetaData,
+    CalibrationData,
+    MicCalibration,
+    SpeakerCalibration
+)
 from .calibration_geometry import (
     TubeGeometry,
     tube_12mm,

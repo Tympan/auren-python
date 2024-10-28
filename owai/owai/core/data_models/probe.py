@@ -3,7 +3,9 @@
 import typing as t
 from pydantic import BaseModel
 
-class Probe(BaseModel):
+from owai.core.utils import GetUnitsMixin, IDMixin
+
+class Probe(IDMixin, GetUnitsMixin, BaseModel):
     """Base class that describes an Auren probe
 
     This basically describes the location of mics, and probe diameter
