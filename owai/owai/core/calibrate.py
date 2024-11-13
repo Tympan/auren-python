@@ -113,7 +113,7 @@ class Calibrate(BaseModel):
         # send the play/record command
         self._tympan.send_char('4')
         # Get the reply
-        reply = self._tympan.read_all(0.5)
+        reply = ''
         count = 0
         while "Auto-stopping SD recording of AUDIO" not in reply:
             reply += self._tympan.read_all(0.5)
@@ -125,6 +125,7 @@ class Calibrate(BaseModel):
             name = "AUDIO" + reply.split("AUDIO")[1].split('.')[0] + ".WAV"
             print ("Success: ", reply)
         except IndexError:
+            name = ["[error]"]
             print ("Error: ", reply)
 
         print("Results saved in ", name)
