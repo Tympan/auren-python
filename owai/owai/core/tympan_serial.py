@@ -234,8 +234,12 @@ class TympanSerial:
     def read_rx_thread(self):
         while self.rx_thread.is_alive:
             if self.port_h.in_waiting > 0:
-                data = self.port_h.read(size=1024)
-                self.rx_buffer_q.put(data)
+                try: 
+                    data = self.port_h.read(size=1024)
+                except:
+                    pass
+                if len(data)>0:
+                    self.rx_buffer_q.put(data)
 
     def start_rx_thread(self):
         self.rx_thread = Thread(target=self.read_rx_thread)
