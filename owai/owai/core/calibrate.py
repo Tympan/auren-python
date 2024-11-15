@@ -12,6 +12,8 @@ from owai.core.signal_processing_utils import pad_chirp, dft_known_basis
 from owai.core import io
 import owai
 
+import time
+
 class Calibrate(BaseModel):
 
     ### INPUTS section ###
@@ -321,8 +323,54 @@ class Calibrate(BaseModel):
         # plt.semilogx(f_centers, 20 * np.log10(np.abs(p_cal[0].magnitude) / 20e-6).T);
         # plt.semilogx(f_centers, 20 * np.log10(np.abs(fourier_ref) / 20e-6).T, '--'); plt.show()
 
+    def calibrateAnalogMic(self):
+        TRIAL_DURATION_S = 5
+        reply = bytes()
 
+        # Stop reporting level
+        self._tympan.send_char('L')
 
+        # Set Tympan input channel to mic jack with bias
+        self._tympan.send_char('o')
+        # Clear the buffer
+        reply = self._tympan.read_all(timeout_s=1)
+        print(reply)
+
+        # Start recording
+        self._tympan.send_char('r')
+        reply = self._tympan.read_line(timeout_s=2, eof_str='.WAV')
+        print( reply.decode("utf-8") )
+
+        reply = self._tympan.read_line(timeout_s=2, eof_str='.WAV')
+        print( reply.decode("utf-8") )
+
+        # Start reporting level
+        self._tympan.send_char('l')
+
+        # Print level until recording has stopped
+        curr_time = time.time()
+        while ( time.time() < (curr_time+TRIAL_DURATION_S) ):
+            reply = self._tympan.read_line(timeout_s=1, eof_str='dBFS')
+            if "dBFS" in reply.decode("utf-8"):
+                print( reply.decode("utf-8") )
+
+        # Stop recording
+        self._tympan.send_char('s')
+        reply = self._tympan.read_line(timeout_s=2, eof_str='.WAV')
+        print( reply.decode("utf-8") )
+
+        # Record wav filename
+        try:
+            name = "AUDIO" + reply.split("AUDIO")[1].split('.')[0] + ".WAV"
+        except:
+            name = "error parsing filename"
+        # Stop reporting level
+        self._tympan.send_char('L')
+
+        # Clear the buffer
+        print(self._tympan.read_all(1))
+
+        return (name)
 
 
     ######## PLOT FUNCTIONS
