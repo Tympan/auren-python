@@ -13,9 +13,13 @@ L2 = 20 / 1000
 
 # k0L = np.linspace(0, 4, 256)
 
-plt.semilogx(f, np.abs(R(k*L1 + 0.05j)), label="2mm")
-plt.semilogx(f, np.abs(R(k*L1*2 + 0.05j)), label="4mm")
-plt.semilogx(f, np.abs(R(k*L2 + 0.05j)), label="20mm")
+plt.semilogx(f, np.abs(R(k*L1 + 0.05j)), label=r"2mm, $\alpha=0.05$")
+plt.semilogx(f, np.abs(R(k*L1*2 + 0.05j)), label=r"4mm, $\alpha=0.05$")
+plt.semilogx(f, np.abs(R(k*L1 + 2*0.05j)), label=r"2mm, $\alpha=0.1$")
+plt.semilogx(f, np.abs(R(k*L1 + 0.5j)), label=r"2mm, $\alpha=0.5$")
+plt.xlabel("Frequency (Hz)")
+plt.ylabel("Reflection coefficient")
+plt.ylim(0, 1)
 plt.legend()
 plt.grid()
 plt.show()
