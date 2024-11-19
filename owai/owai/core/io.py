@@ -66,7 +66,7 @@ def load_wav(filename: str, frequency_domain: bool = False) -> tuple[np.ndarray,
 
     try:
         samplerate, data = wavfile.read(filename)
-        if data.dtype.kind == 'i':
+        if data.dtype.kind == "i":
             data = data / (np.iinfo(data.dtype).max + 1)  # To match Matlab
     except ValueError as e:
         print(
@@ -96,7 +96,8 @@ def load_wav(filename: str, frequency_domain: bool = False) -> tuple[np.ndarray,
     f, d = to_fourier(data, samplerate)
     return f, d, samplerate
 
-def save_calibration_data(path : str, calibration_data : dict, convert_array_to_list : bool=False, fmt="json") -> str:
+
+def save_calibration_data(path: str, calibration_data: dict, convert_array_to_list: bool = False, fmt="json") -> str:
     """Saves calibration data
 
     Parameters
@@ -113,7 +114,7 @@ def save_calibration_data(path : str, calibration_data : dict, convert_array_to_
     str
         Actual filename saved to. This is automatically time-stamped.
     """
-    date = str(np.datetime64("now")).replace(':',".")
+    date = str(np.datetime64("now")).replace(":", ".")
     filename = os.path.join(path, "calibration_" + date + "." + fmt)
     # Convert any numpy arrays to lists
     def _arr_to_list(d):
@@ -124,21 +125,23 @@ def save_calibration_data(path : str, calibration_data : dict, convert_array_to_
             elif isinstance(v, np.ndarray):
                 new_d[k] = v.tolist()
         return new_d
+
     if convert_array_to_list:
         cd = _arr_to_list(calibration_data)
     else:
         cd = calibration_data
 
-    with open(filename, 'w', encoding='utf-8') as fid:
-        if fmt == 'json':
+    with open(filename, "w", encoding="utf-8") as fid:
+        if fmt == "json":
             json.dump(cd, fid)
-        elif fmt == 'yaml':
+        elif fmt == "yaml":
             yaml.dump(cd, fid, allow_unicode=True)
         else:
             raise ValueError()
     return filename
 
-def write_wav(path : str, signal :  np.ndarray, samplerate : float, dtype=None):
+
+def write_wav(path: str, signal: np.ndarray, samplerate: float, dtype=None):
     """Writes a wavefile to disk, automatically converting to the required dtype
 
     Parameters
@@ -159,5 +162,3 @@ def write_wav(path : str, signal :  np.ndarray, samplerate : float, dtype=None):
     else:
         amplitude = 1
     wavfile.write(path, samplerate, (signal * amplitude).astype(dtype))
-
-

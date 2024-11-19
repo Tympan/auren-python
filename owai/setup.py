@@ -26,8 +26,8 @@ install_requires = [
     "soundfile",
     "pydantic",
     "numpydantic",
-    "ipympl", # Interactive notebook plots
-    "pyserial", # Connect/control tympan
+    "ipympl",  # Interactive notebook plots
+    "pyserial",  # Connect/control tympan
 ]
 
 extras_require = {
