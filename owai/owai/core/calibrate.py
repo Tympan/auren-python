@@ -1,18 +1,19 @@
-import typing as t
-from pydantic import BaseModel
-from numpydantic import NDArray, Shape
-import numpy as np
-from scipy import ndimage
 import os
-
-from owai.core import model
-import owai.core.data_models as dm
-from owai.core.tympan_serial import TympanSerial
-from owai.core.signal_processing_utils import pad_chirp, dft_known_basis
-from owai.core import io
-import owai
-
 import time
+import typing as t
+
+import matplotlib.pyplot as plt
+import numpy as np
+from numpydantic import NDArray, Shape
+from pydantic import BaseModel
+from scipy import ndimage
+
+import owai
+import owai.core.data_models as dm
+from owai.core import io, model
+from owai.core.signal_processing_utils import dft_known_basis, pad_chirp
+from owai.core.tympan_serial import TympanSerial
+from owai.core.utils import todB
 
 
 class Calibrate(BaseModel):
@@ -44,7 +45,7 @@ class Calibrate(BaseModel):
 
     sound_speed: float = 343  # m/s
 
-    ref_mic_sensitivity: float = 6.3  # mv/Pa
+    ref_mic_sensitivity: float = 2.28  # mv/Pa
     tympan_full_scale_voltage: float = 1  # Volts
 
     ### OUTPUTS Section ###
@@ -52,13 +53,13 @@ class Calibrate(BaseModel):
     calibration: dm.CalibrationData = None
 
     # Add ALL the calibration information for debugging and archeology
-    # rel_cal :  t.Optional[NDArray[Shape["* frequencies, * channels"], complex]] = None
+    rel_cal :  t.Optional[NDArray[Shape["* frequencies, * channels"], complex]] = None
     abs_cal: t.Optional[NDArray[Shape["* frequencies"], float]] = None
-    # p_cal :  t.Optional[NDArray[Shape["* tubes, * channels, * frequencies"], complex]] = None
+    p_cal :  t.Optional[NDArray[Shape["* tubes, * channels, * frequencies"], complex]] = None
     cal: t.Optional[NDArray[Shape["* channels, * frequencies, 3 freqAmpPhase"], float]] = None
-    # fourier:  t.Optional[NDArray[Shape["* tubes, * channels, * frequencies"], complex]] = None
-    # fourier_ref:  t.Optional[NDArray[Shape["* tubes, * frequencies"], complex]] = None
-    # fourier_freq:  t.Optional[NDArray[Shape["* frequencies"], complex]] = None
+    fourier:  t.Optional[NDArray[Shape["* tubes, * channels, * frequencies"], complex]] = None
+    fourier_ref:  t.Optional[NDArray[Shape["* tubes, * frequencies"], complex]] = None
+    fourier_freq:  t.Optional[NDArray[Shape["* frequencies"], complex]] = None
     real_basis: t.Optional[t.List[NDArray]] = None
     imag_basis: t.Optional[t.List[NDArray]] = None
     f_at_sample: t.Optional[NDArray[Shape["* frequencies"], float]] = None
@@ -197,14 +198,12 @@ class Calibrate(BaseModel):
     def make_cal_chirps(self) -> t.List[NDArray]:
         amp = 10 ** (self.calibration_tone_db / 20)
         tones = [
-            self.calibration_mic_tone_specs.get(pad_time=self.calibration_pad_time)[1][:, None].repeat(2, axis=1) * amp
+            self.calibration_mic_tone_specs.get(pad_time=self.calibration_pad_time)[1] * amp
         ]
         speaker_tones = [
-            csts.get(pad_time=self.calibration_pad_time)[1][:, None].repeat(2, axis=1) * amp
+            csts.get(pad_time=self.calibration_pad_time)[1] * amp
             for csts in self.calibration_speaker_tone_specs
         ]
-        speaker_tones[0][:, 1] = 0
-        speaker_tones[1][:, 0] = 0
 
         self._calibration_tones = tones
         self._calibration_tones_speaker = speaker_tones
@@ -266,18 +265,18 @@ class Calibrate(BaseModel):
         mics = [dm.MicCalibration(cal=c, channel=i) for i, c in enumerate(cal)]
         cal_obj = dm.CalibrationData(mic=mics)
 
-        # Calibrate the pressure for the calibration data (do to self-consistency test)
+        # Calibrate the pressure for the calibration data (to do self-consistency test)
         p_cal = cal_obj.cal_p(f_centers, fourier) * owai.units("Pa")
 
         # Save ALL the calibration information
         self.calibration = cal_obj
-        # self.rel_cal = rel_cal
+        self.rel_cal = rel_cal
         self.abs_cal = abs_cal
         self.cal = cal
-        # self.p_cal = p_cal
-        # self.fourier = fourier
-        # self.fourier_ref = fourier_ref
-        # self.fourier_freq = f_centers
+        self.p_cal = p_cal
+        self.fourier = fourier
+        self.fourier_ref = fourier_ref
+        self.fourier_freq = f_centers
         self.imag_basis = imag_basis
         self.f_at_sample = f_at_sample
 
@@ -352,8 +351,26 @@ class Calibrate(BaseModel):
         return name
 
     ######## PLOT FUNCTIONS
-    def plot_calibration_data(self, show=False, **kwargs):
-        self.raw_data.plot(**kwargs)
+    def plot_calibration_data(self, kwargs={}, figkwargs={}, show=True):
+        self.raw_data.plot(kwargs, figkwargs, show)
+
+    def plot_calibration(self, kwargs={}, figkwargs={}, show=True):
+        self.calibration.plot(kwargs=kwargs, figkwargs=figkwargs, show=show)
+
+    def plot_calibration_checks(self, kwargs={}, figkwargs={}, show=True):
+        # Plot the fourier transforms, to make sure they look reasonable
+
+        fig, axs = plt.subplots(2, 2, sharex=True, sharey=True, **figkwargs)
+        for i in range(4):
+            ii = i // 2
+            jj = i % 2
+            axs[ii, jj].semilogx(self.fourier_freq / 1000, todB(self.fourier[i]).T, **kwargs)
+            axs[ii, jj].set_title(f"Tube {i}")
+        axs[0, 0].legend()
+
+        if show:
+            plt.show()
+
 
     ######## PRIVATE METHODS
 

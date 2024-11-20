@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from owai.core import io
 from owai.core.data_models.calibration_geometry import TubeGeometry
 from owai.core.data_models.chirp import Chirp
+from owai.core.utils import todB
 
 
 class RawData(BaseModel):
@@ -56,6 +57,7 @@ class FileMetaData(BaseModel):
     name: str
     tube: TubeGeometry
     tone: Chirp
+    used_for: t.Union[t.Literal["speaker"], t.Literal["mic"]] = "mic"
 
 
 class RawCalibrationData(BaseModel):
@@ -137,6 +139,19 @@ class RawCalibrationData(BaseModel):
         for i in range(len(self._tones_dict)):
             data = self.data[i]
             tone_id = list(self._tones_dict.keys())[i]
+            tone = None
+            title = ""
+            for f in self.file_meta_data:
+                if f.tone.id == tone_id:
+                    tone = f.tone
+                    if np.all(tone.channels):
+                        title = "Mic Calibration"
+                    elif tone.channels[0]:
+                        title = "Speaker 0 Calibration"
+                    elif tone.channels[1]:
+                        title = "Speaker 1 Calibration"
+                    break
+
             if tone_id in self._tones_dict_ref:
                 has_ref = True
                 data_ref = self.data_ref[list(self._tones_dict_ref.keys()).index(tone_id)]
@@ -145,7 +160,8 @@ class RawCalibrationData(BaseModel):
                 data_ref = None
             cols = data.shape[1] + has_ref
             rows = data.shape[0]
-            fig, axs = plt.subplots(rows, cols, sharex=True, sharey=True, **figkwargs)
+            fig, axs = plt.subplots(rows, cols, sharex=False, sharey=True, **figkwargs)
+            fig.suptitle(title)
             axs = np.atleast_2d(axs)
             my_tone = self.file_meta_data[tone_ids.index(list(self._tones_dict.keys())[i])].tone
             ymin = min(my_tone.frequencies)
@@ -154,8 +170,8 @@ class RawCalibrationData(BaseModel):
             for row in range(rows):
                 for col in range(cols - has_ref):
                     axs[row, col].specgram(data[row, col], **kwargs)
-                    axs[rows - 1, col].set_xlabel("Channel {}, time".format(col))
-                axs[row, 0].set_ylabel("Tube {}, frequency".format(row))
+                    axs[rows - 1, col].set_xlabel("Channel {} (s)".format(col))
+                axs[row, 0].set_ylabel("Tube {} (Hz)".format(row))
                 if has_ref:
                     axs[row, cols - 1].specgram(data_ref[row, 0], **kwargs)
                     axs[rows - 1, cols - 1].set_xlabel("Ref Mic")
@@ -229,3 +245,34 @@ class CalibrationData(BaseModel):
 
             amplitude.append(make_func(speaker))
         return amplitude
+
+    def plot(self, kwargs=None, figkwargs=None, show=True):
+        if kwargs is None:
+            kwargs = {}
+        if figkwargs is None:
+            figkwargs = {}
+
+
+        fig, axs = plt.subplots(2, 2, sharex=True, sharey=False, **figkwargs)
+        # Plot mic calibration
+        if self.mic:
+            for i in range(4):
+                axs[0, 0].semilogx(self.mic[i].cal[:, 0] / 1000, todB(self.mic[i].cal[:, 1], ref=1), **kwargs, label=str(i))
+                axs[0, 1].semilogx(self.mic[i].cal[:, 0] / 1000, np.rad2deg(self.mic[i].cal[:, 2]), **kwargs, label=str(i))
+            axs[0, 0].set_ylabel("Amplitude Cal (dB re 1)")
+            axs[0, 1].set_ylabel("Phase Cal (°)")
+            axs[0, 0].set_title("Mic Calibrations")
+            axs[0, 1].set_title("Mic Calibrations")
+            axs[0, 1].legend()
+        if self.speaker:
+            for i in range(2):
+                axs[1, i].semilogx(self.speaker[i].cal[:, 0] / 1000, todB(self.speaker[i].cal[:, 1], ref=1), **kwargs)
+                axs[1, i].set_ylabel("Frac FS (dB re 1)")
+                axs[1, i].set_xlabel("Frequency (kHz)")
+                axs[1, i].set_title(f"Speaker {i} Calibration")
+
+        if show:
+            plt.show()
+
+
+
