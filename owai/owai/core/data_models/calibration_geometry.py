@@ -6,12 +6,13 @@ from pydantic import BaseModel
 
 from owai.core.utils import IDMixin, GetUnitsMixin
 
+
 class TubeGeometry(IDMixin, GetUnitsMixin, BaseModel):
-    units : str = "mm"
-    type : t.Literal["open", "closed"] = "closed"
-    length : float
-    interior_diameter : float = 3.4
-    probe_locations : t.List[float] = [0.4]
+    units: str = "mm"
+    type: t.Literal["open", "closed"] = "closed"
+    length: float
+    interior_diameter: float = 3.4
+    probe_locations: t.List[float] = [0.4]
 
 
 # instantiate a set of standard geometries used by the Auren
@@ -60,4 +61,3 @@ simulator_2cc = TubeGeometry(
     # probe_locations=[0.4, 28.1],
     probe_locations=[28.5],
 )
-

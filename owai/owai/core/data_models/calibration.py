@@ -10,12 +10,14 @@ import matplotlib.pyplot as plt
 from owai.core import io
 from owai.core.data_models.calibration_geometry import TubeGeometry
 from owai.core.data_models.chirp import Chirp
+from owai.core.utils import todB
+
 
 class RawData(BaseModel):
-    samplerate : t.Optional[int] = None
-    data : t.Optional[NDArray[Shape["* tube, 4 channel, * signal"], float]] = None
-    samplerate_ref : t.Optional[int] = None
-    data_ref :  t.Optional[NDArray[Shape["* tube, * signal"], float]] = None
+    samplerate: t.Optional[int] = None
+    data: t.Optional[NDArray[Shape["* tube, 4 channel, * signal"], float]] = None
+    samplerate_ref: t.Optional[int] = None
+    data_ref: t.Optional[NDArray[Shape["* tube, * signal"], float]] = None
 
     @property
     def time(self):
@@ -33,7 +35,11 @@ class RawData(BaseModel):
                 try:
                     assert samplerate == my_samplerate
                 except AssertionError:
-                    print ("File {} with samplereate {} does not match expected samplerate of {}".format(file, samplerate, self.samplerate))
+                    print(
+                        "File {} with samplereate {} does not match expected samplerate of {}".format(
+                            file, samplerate, self.samplerate
+                        )
+                    )
             timeseries.append(data.T)
             minsize = min(data.shape[0], minsize)
 
@@ -41,31 +47,32 @@ class RawData(BaseModel):
         data = np.stack([t[..., :minsize] for t in timeseries], axis=0)
         return data, samplerate
 
-    def load_wav(self, auren_files : t.List[str], ref_files : t.List[str]):
+    def load_wav(self, auren_files: t.List[str], ref_files: t.List[str]):
         self.data, self.samplerate = self._load_files(auren_files)
         self.data_ref, self.samplerate_ref = self._load_files(ref_files)
         print("Done loading data.")
 
+
 class FileMetaData(BaseModel):
-    name : str
-    tube : TubeGeometry
-    tone : Chirp
+    name: str
+    tube: TubeGeometry
+    tone: Chirp
+    used_for: t.Union[t.Literal["speaker"], t.Literal["mic"]] = "mic"
+
 
 class RawCalibrationData(BaseModel):
-    file_meta_data :  t.Optional[t.List[FileMetaData]] = None
-    file_meta_data_ref :  t.Optional[t.List[FileMetaData]] = None
-    samplerate : t.Optional[int] = None
+    file_meta_data: t.Optional[t.List[FileMetaData]] = None
+    file_meta_data_ref: t.Optional[t.List[FileMetaData]] = None
+    samplerate: t.Optional[int] = None
     # Since tones can be different lengths, the data is a different list for each tone
-    data :  t.Optional[t.List[NDArray[Shape["* tube, 4 channel, * signal"], float]]] = None
-    samplerate_ref : t.Optional[int] = None
+    data: t.Optional[t.List[NDArray[Shape["* tube, 4 channel, * signal"], float]]] = None
+    samplerate_ref: t.Optional[int] = None
     # Since tones can be different lengths, the data is a different list for each tone
-    data_ref :  t.Optional[t.List[NDArray[Shape["* tube, * signal"], float]]] = None
+    data_ref: t.Optional[t.List[NDArray[Shape["* tube, * signal"], float]]] = None
 
     # Private variables
-    _tones_dict :  t.Optional[dict] = None
-    _tones_dict_ref :  t.Optional[dict] = None
-
-
+    _tones_dict: t.Optional[dict] = None
+    _tones_dict_ref: t.Optional[dict] = None
 
     @property
     def time(self):
@@ -75,7 +82,7 @@ class RawCalibrationData(BaseModel):
         timeseries = []
         # tones = set()
         # tubes = set()
-        tones_dict={}
+        tones_dict = {}
         minsize = {}
         samplerate = None
         for file in files:
@@ -86,7 +93,11 @@ class RawCalibrationData(BaseModel):
                 try:
                     assert samplerate == my_samplerate
                 except AssertionError:
-                    print ("File {} with samplereate {} does not match expected samplerate of {}".format(file, samplerate, self.samplerate))
+                    print(
+                        "File {} with samplereate {} does not match expected samplerate of {}".format(
+                            file, samplerate, self.samplerate
+                        )
+                    )
             timeseries.append(data.T)
             # tones.add(file.tone.id)
             # tubes.add(file.tube.id)
@@ -104,10 +115,10 @@ class RawCalibrationData(BaseModel):
             tone_i = list(tones_dict.keys()).index(file.tone.id)
             # tube_i = tubes.index(file.tube.id)
             tube_i = list(tones_dict[file.tone.id]).index(file.tube.id)
-            data[tone_i][tube_i] = timeseries[i][:, :minsize[file.tone.id]]
+            data[tone_i][tube_i] = timeseries[i][:, : minsize[file.tone.id]]
         return data, samplerate, tones_dict
 
-    def load_wav(self, auren_files : t.List[FileMetaData] = None, ref_files : t.List[FileMetaData] = None):
+    def load_wav(self, auren_files: t.List[FileMetaData] = None, ref_files: t.List[FileMetaData] = None):
         if auren_files is None:
             auren_files = self.file_meta_data
         if ref_files is None:
@@ -128,6 +139,19 @@ class RawCalibrationData(BaseModel):
         for i in range(len(self._tones_dict)):
             data = self.data[i]
             tone_id = list(self._tones_dict.keys())[i]
+            tone = None
+            title = ""
+            for f in self.file_meta_data:
+                if f.tone.id == tone_id:
+                    tone = f.tone
+                    if np.all(tone.channels):
+                        title = "Mic Calibration"
+                    elif tone.channels[0]:
+                        title = "Speaker 0 Calibration"
+                    elif tone.channels[1]:
+                        title = "Speaker 1 Calibration"
+                    break
+
             if tone_id in self._tones_dict_ref:
                 has_ref = True
                 data_ref = self.data_ref[list(self._tones_dict_ref.keys()).index(tone_id)]
@@ -136,7 +160,8 @@ class RawCalibrationData(BaseModel):
                 data_ref = None
             cols = data.shape[1] + has_ref
             rows = data.shape[0]
-            fig, axs = plt.subplots(rows, cols, sharex=True, sharey=True, **figkwargs)
+            fig, axs = plt.subplots(rows, cols, sharex=False, sharey=True, **figkwargs)
+            fig.suptitle(title)
             axs = np.atleast_2d(axs)
             my_tone = self.file_meta_data[tone_ids.index(list(self._tones_dict.keys())[i])].tone
             ymin = min(my_tone.frequencies)
@@ -145,18 +170,15 @@ class RawCalibrationData(BaseModel):
             for row in range(rows):
                 for col in range(cols - has_ref):
                     axs[row, col].specgram(data[row, col], **kwargs)
-                    axs[rows-1, col].set_xlabel("Channel {}, time".format(col))
-                axs[row, 0].set_ylabel("Tube {}, frequency".format(row))
+                    axs[rows - 1, col].set_xlabel("Channel {} (s)".format(col))
+                axs[row, 0].set_ylabel("Tube {} (Hz)".format(row))
                 if has_ref:
-                    axs[row, cols-1].specgram(data_ref[row, 0], **kwargs)
-                    axs[rows-1, cols-1].set_xlabel("Ref Mic")
+                    axs[row, cols - 1].specgram(data_ref[row, 0], **kwargs)
+                    axs[rows - 1, cols - 1].set_xlabel("Ref Mic")
             axs[0, 0].set_ylim(ymin, ymax)
 
         if show:
             plt.show()
-
-
-
 
 
 class MicCalibration(BaseModel):
@@ -164,21 +186,23 @@ class MicCalibration(BaseModel):
     units: t.List[str] = ["Hz", "Pa", "radians"]
     description: str = "Infineon-IM72D128"
     id: int = -1
-    channel : int = -1
+    channel: int = -1
     distance: float = -1
-    distance_units : str = "mm"
-    cal :  t.Optional[NDArray[Shape["* data, 3 freqAmpPhase"], float]] = None
+    distance_units: str = "mm"
+    cal: t.Optional[NDArray[Shape["* data, 3 freqAmpPhase"], float]] = None
+
 
 class SpeakerCalibration(BaseModel):
     id: int = -1
     units: t.List[str] = ["Hz", "Fraction of Full Scale"]
     description: str = "RAB-34832-b148"
     frequency_range: t.List[float] = [100, 20000]
-    cal :  t.Optional[NDArray[Shape["* data, 3 freqFrac"], float]] = None
+    cal: t.Optional[NDArray[Shape["* data, 2 freqFrac"], float]] = None
+
 
 class CalibrationData(BaseModel):
-    mic :  t.Optional[t.List[MicCalibration]] = None
-    speaker :  t.Optional[t.List[SpeakerCalibration]] = None
+    mic: t.Optional[t.List[MicCalibration]] = None
+    speaker: t.Optional[t.List[SpeakerCalibration]] = None
     description: str = ""
 
     _mic_cal_cache = None
@@ -198,4 +222,57 @@ class CalibrationData(BaseModel):
             p_cal[..., i, :] = p[..., i, :] * amp * np.exp(1j * phase)
 
         return p_cal
+
+    def cal_speaker(self, level: float):
+        """Return calibration speaker data. This returns a function that gives the fullscale level
+        given a frequency
+
+        Parameters
+        ----------
+        level : float
+            Desired level in dB SPL
+        """
+        pa = 10 ** (level / 20) * (20e-6)
+        amplitude = []
+        for speaker in self.speaker:
+
+            def make_func(speaker):
+                def amp(f):
+                    amplitude = pa / np.interp(f, speaker.cal[:, 0], speaker.cal[:, 1])
+                    return amplitude
+
+                return amp
+
+            amplitude.append(make_func(speaker))
+        return amplitude
+
+    def plot(self, kwargs=None, figkwargs=None, show=True):
+        if kwargs is None:
+            kwargs = {}
+        if figkwargs is None:
+            figkwargs = {}
+
+
+        fig, axs = plt.subplots(2, 2, sharex=True, sharey=False, **figkwargs)
+        # Plot mic calibration
+        if self.mic:
+            for i in range(4):
+                axs[0, 0].semilogx(self.mic[i].cal[:, 0] / 1000, todB(self.mic[i].cal[:, 1], ref=1), **kwargs, label=str(i))
+                axs[0, 1].semilogx(self.mic[i].cal[:, 0] / 1000, np.rad2deg(self.mic[i].cal[:, 2]), **kwargs, label=str(i))
+            axs[0, 0].set_ylabel("Amplitude Cal (dB re 1)")
+            axs[0, 1].set_ylabel("Phase Cal (°)")
+            axs[0, 0].set_title("Mic Calibrations")
+            axs[0, 1].set_title("Mic Calibrations")
+            axs[0, 1].legend()
+        if self.speaker:
+            for i in range(2):
+                axs[1, i].semilogx(self.speaker[i].cal[:, 0] / 1000, todB(self.speaker[i].cal[:, 1], ref=1), **kwargs)
+                axs[1, i].set_ylabel("Frac FS (dB re 1)")
+                axs[1, i].set_xlabel("Frequency (kHz)")
+                axs[1, i].set_title(f"Speaker {i} Calibration")
+
+        if show:
+            plt.show()
+
+
 

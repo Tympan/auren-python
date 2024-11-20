@@ -30,6 +30,7 @@ def to_fourier(time_series: np.ndarray, samplerate: float) -> tuple[np.ndarray, 
 
     return frequency, fourier
 
+
 def from_fourier(fourier: np.ndarray) -> np.ndarray:
     """Generates a time signal from a fourier representation created using `to_fourier`
 
@@ -244,14 +245,16 @@ def trim_signal_mean_amplitude(
         return slc
     return data[..., slc]
 
+
 def make_chirp(
-        times: np.ndarray,
-        f0 : float,
-        f1 : float,
-        amplitude_func=None,
-        phi : float=0,
-        return_freq: bool=False,
-        return_phase: bool=False) -> np.ndarray:
+    times: np.ndarray,
+    f0: float,
+    f1: float,
+    amplitude_func=None,
+    phi: float = 0,
+    return_freq: bool = False,
+    return_phase: bool = False,
+) -> np.ndarray:
     """Generates a logarithmic/exponential chirp in the time domain
 
     Parameters
@@ -291,15 +294,17 @@ def make_chirp(
         out.append(phase)
     return tuple(out)
 
+
 def make_multi_chirp(
-        frequencies : t.List[float],
-        durations : t.List[float],
-        samplerate : float,
-        amplitude_func=None,
-        phi : float=0,
-        return_freq: bool=False,
-        return_phase: bool=False,
-        pad_time=0) -> np.ndarray:
+    frequencies: t.List[float],
+    durations: t.List[float],
+    samplerate: float,
+    amplitude_func=None,
+    phi: float = 0,
+    return_freq: bool = False,
+    return_phase: bool = False,
+    pad_time=0,
+) -> np.ndarray:
     """Generates a logarithmic/exponential chirp in the time domain
 
     Parameters
@@ -338,7 +343,15 @@ def make_multi_chirp(
     for i, dur in enumerate(durations):
         I = (times >= durations_sum) & (times < (durations_sum + dur + 1 / samplerate))
         durations_sum += dur
-        s, fatt, patt = make_chirp(times[I] - times[I][0], frequencies[i], frequencies[i+1], amplitude_func, last_phase, return_freq=True, return_phase=True)
+        s, fatt, patt = make_chirp(
+            times[I] - times[I][0],
+            frequencies[i],
+            frequencies[i + 1],
+            amplitude_func,
+            last_phase,
+            return_freq=True,
+            return_phase=True,
+        )
         data[I] = s
         f_at_t[I] = fatt
         p_at_t[I] = patt + last_phase
@@ -355,7 +368,9 @@ def make_multi_chirp(
     return tuple(out)
 
 
-def pad_chirp(times : np.ndarray, signal: np.ndarray, f0: float, f1 : float, pad_time : float, phi: float=0, last_phase=0):
+def pad_chirp(
+    times: np.ndarray, signal: np.ndarray, f0: float, f1: float, pad_time: float, phi: float = 0, last_phase=0
+):
     """Pads a time series signal -- specifically a chirp, with an increasing amplitude wave at the start
     and end of the signal.
 
@@ -389,27 +404,28 @@ def pad_chirp(times : np.ndarray, signal: np.ndarray, f0: float, f1 : float, pad
         # See https://en.wikipedia.org/wiki/Chirp#Exponential
         # freq = f0 * (pow(f1 / f0, (times / t1)))
         beta = t1 / np.log(f1 / f0)
-        last_phase = 2 * np.pi * beta * (f1 - f0)  # -f0 is a last_phase shift because scipy uses cos and wikipedia uses sin
-
+        last_phase = (
+            2 * np.pi * beta * (f1 - f0)
+        )  # -f0 is a last_phase shift because scipy uses cos and wikipedia uses sin
 
     pad_times = np.linspace(0, pad_time, n)
     new_times = np.concatenate([pad_times - pad_time - dt, times, pad_times + times.max() + dt])
     a0 = signal[0] / np.cos(2 * np.pi * f0 * times[0] + phi) * pad_times / pad_times.max()
     a1 = signal[-1] / np.cos(2 * np.pi * f1 * times[-1] + phi + last_phase) * pad_times[::-1] / pad_times.max()
-    new_signal = np.concatenate([
-        np.cos(2 * np.pi * f0 * new_times[:n] + phi) * a0,
-        signal,
-        np.cos(2 * np.pi * f1 * new_times[-n:] + phi) * a1
-    ])
+    new_signal = np.concatenate(
+        [np.cos(2 * np.pi * f0 * new_times[:n] + phi) * a0, signal, np.cos(2 * np.pi * f1 * new_times[-n:] + phi) * a1]
+    )
     return new_times, new_signal
 
+
 def dft_known_basis(
-        data: NDArray,
-        f_at_sample: NDArray,
-        basis_real: NDArray,
-        basis_imag: NDArray,
-        block_size: int = 2048,
-        n_regions: int = 256) -> t.Tuple[NDArray, NDArray]:
+    data: NDArray,
+    f_at_sample: NDArray,
+    basis_real: NDArray,
+    basis_imag: NDArray,
+    block_size: int = 2048,
+    n_regions: int = 256,
+) -> t.Tuple[NDArray, NDArray]:
 
     n_samples = data.shape[-1]
     start_inds = np.round(np.linspace(0, n_samples - block_size, n_regions)).astype(int)
@@ -421,7 +437,6 @@ def dft_known_basis(
     # Initialize outputs
     f_centers = f_at_sample[start_inds + block_size // 2]
     fourier = np.zeros(data.shape[:-1] + (n_regions,), complex)
-
 
     for i, start_ind in enumerate(start_inds):
         slc = slice(start_ind, start_ind + block_size)

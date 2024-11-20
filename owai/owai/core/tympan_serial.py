@@ -1,4 +1,4 @@
- #!/usr/bin/env python
+#!/usr/bin/env python
 """Provides serial communciation to the Tympan
 
 MIT License
@@ -15,9 +15,10 @@ from serial.tools import list_ports
 from serial import Serial
 from serial import SerialException
 
+
 class TympanSerial:
-    """Manages the serial port to the Tympan
-    """
+    """Manages the serial port to the Tympan"""
+
     def __init__(self):
         self.all_ports = []
         self.tymp_ports = []
@@ -25,7 +26,7 @@ class TympanSerial:
         self.err = None
 
         # Initialize an RX buffer queue
-        self.rx_buffer_q = QueueWithPeek()                              #Extend queue with a peek function.
+        self.rx_buffer_q = QueueWithPeek()  # Extend queue with a peek function.
 
     def list_ports(self, target_vid_list=[5824], print_flag=False):
         """Updates the list of available ports and filters them by VID
@@ -52,7 +53,7 @@ class TympanSerial:
             # Print otjher serial ports
         if print_flag and self.all_ports:
             print("Other ports:")
-            other_ports = [p for p in self.all_ports if not(p.vid in target_vid_list)]
+            other_ports = [p for p in self.all_ports if not (p.vid in target_vid_list)]
             for p in other_ports:
                 print("{:<32}".format(p.description))
 
@@ -79,7 +80,7 @@ class TympanSerial:
                 port_to_open = [p for p in self.all_ports if port_desc in p.description][0]
 
             # ELSE IF no Tympan ports are found, error
-            elif len(self.tymp_ports)<1:
+            elif len(self.tymp_ports) < 1:
                 err = "Err: No Tympan ports found."
                 print(err)
                 print("Available ports: ")
@@ -87,7 +88,7 @@ class TympanSerial:
                     print("{:<32}".format(p.description))
 
             # ELSE IF one Tympan port is found, set it to open
-            elif len(self.tymp_ports)==1:
+            elif len(self.tymp_ports) == 1:
                 port_to_open = self.tymp_ports[0]
 
             # ELSE IF more than one Tympan port is found, error
@@ -104,16 +105,15 @@ class TympanSerial:
         except Exception as err:
             print(err)
 
-
         # Open the port
         connected_flag = False
 
         if port_to_open:
-            while ( not (connected_flag) and (num_retries>0) ):
+            while not (connected_flag) and (num_retries > 0):
                 try:
                     self.port_h = Serial(port=port_to_open.device, baudrate=115200, timeout=0.5)
 
-                    if self.port_h.is_open :
+                    if self.port_h.is_open:
                         print("Opened: ", port_to_open.device)
                         connected_flag = True
 
@@ -130,7 +130,7 @@ class TympanSerial:
 
         # Start thread for reading serial
         if (err is None) and connected_flag:
-            #print("Starting Rx thread")
+            # print("Starting Rx thread")
             self.start_rx_thread()
 
         # Clear buffer, printing any incoming messages
@@ -139,7 +139,7 @@ class TympanSerial:
 
         return err
 
-    def send_char(self, command_char, eol_str='\n'):
+    def send_char(self, command_char, eol_str="\n"):
         """_summary_
 
         Args:
@@ -149,29 +149,29 @@ class TympanSerial:
         Returns:
             _type_: _description_
         """
-        num_bytes = self.port_h.write(bytes(command_char + eol_str, 'utf-8'))
+        num_bytes = self.port_h.write(bytes(command_char + eol_str, "utf-8"))
 
         # Give some time for the device to respond
         sleep(0.05)
 
         return num_bytes
 
-    def send_string(self, command_str, eol_str='\n'):
-        num_bytes = self.port_h.write(bytes(command_str + eol_str, 'utf-8'))
+    def send_string(self, command_str, eol_str="\n"):
+        num_bytes = self.port_h.write(bytes(command_str + eol_str, "utf-8"))
         sleep(0.05)
 
-    def read_line(self, timeout_s=0.5, eof_str='\n'):
+    def read_line(self, timeout_s=0.5, eof_str="\n"):
         found_eol_flag = False
         buf = bytearray()
 
         # Convert EOF to byte
-        eof_byte = bytes(eof_str, 'utf-8')
+        eof_byte = bytes(eof_str, "utf-8")
 
         # Start timer
         last_time_s = time()
 
         # Keep reading bytes until timeout or EOL
-        while ( (time()<(last_time_s+timeout_s)) and not found_eol_flag ):
+        while (time() < (last_time_s + timeout_s)) and not found_eol_flag:
             # Peek at Rx buffer
             peek_buf = self.peek_rx_buffer()
 
@@ -181,7 +181,7 @@ class TympanSerial:
                 found_eol_flag = True
 
         # Check if the timeout expired
-        if(time()>=last_time_s+timeout_s):
+        if time() >= last_time_s + timeout_s:
             print("Error: timeout")
 
         return buf
@@ -192,19 +192,18 @@ class TympanSerial:
 
         # Start timer
         last_time_s = time()
-        while ( (time()<(last_time_s+timeout_s)) or new_buf):
+        while (time() < (last_time_s + timeout_s)) or new_buf:
             new_buf = self.get_rx_buffer()
             all_buf = all_buf + new_buf
-            sleep(1/32)
-
+            sleep(1 / 32)
 
         # Decode buffer to u
-        return (all_buf.decode("utf-8"))
+        return all_buf.decode("utf-8")
 
     def peek_rx_buffer(self):
         buf = self.rx_buffer_q.peek()
-        buf = b''.join(buf)               # Convert deque object to bytes
-        buf = bytearray(buf)                # Covnert bytes to bytearray
+        buf = b"".join(buf)  # Convert deque object to bytes
+        buf = bytearray(buf)  # Covnert bytes to bytearray
         return buf
 
     def get_rx_buffer(self, timeout_s=0.5, num_bytes=None):
@@ -215,23 +214,23 @@ class TympanSerial:
 
         # If num_bytes not specified, get all queued bytes
         if num_bytes is None:
-            while ( self.rx_buffer_q.qsize()>0 and (time()<last_time_s+timeout_s) ):
-                buf+=self.rx_buffer_q.get()
+            while self.rx_buffer_q.qsize() > 0 and (time() < last_time_s + timeout_s):
+                buf += self.rx_buffer_q.get()
 
         # Else get specified number of bytes from buffer
         else:
-            #print('Waiting for ', num_bytes, 'bytes')
-            #print("Buffer has ", len(self.rx_buffer_q.peek()), "bytes")
-            #print("Receiving Serial", end =" ")
+            # print('Waiting for ', num_bytes, 'bytes')
+            # print("Buffer has ", len(self.rx_buffer_q.peek()), "bytes")
+            # print("Receiving Serial", end =" ")
 
-            while ( (num_bytes>0) and (time()<last_time_s+timeout_s) ):
+            while (num_bytes > 0) and (time() < last_time_s + timeout_s):
                 # Get 1 byte
-                if self.rx_buffer_q.qsize()>0:
-                    tmp_buf = self.rx_buffer_q.get()  #hard-code timeout=1-sec between bytes
-                    buf+=tmp_buf
+                if self.rx_buffer_q.qsize() > 0:
+                    tmp_buf = self.rx_buffer_q.get()  # hard-code timeout=1-sec between bytes
+                    buf += tmp_buf
 
                     # update num_bytes waiting for
-                    num_bytes-=len(tmp_buf)
+                    num_bytes -= len(tmp_buf)
 
         return buf
 
@@ -240,7 +239,7 @@ class TympanSerial:
             if self.port_h.in_waiting > 0:
                 try:
                     data = self.port_h.read(size=1024)
-                    if len(data)>0:
+                    if len(data) > 0:
                         self.rx_buffer_q.put(data)
                 except:
                     pass
@@ -254,12 +253,14 @@ class TympanSerial:
         self.rx_thread.running = False
         self.rx_thread.join()
 
+
 class QueueWithPeek(queue.Queue):
-    """ Adds peek to Queue so that the queue can be examined without removing elements
+    """Adds peek to Queue so that the queue can be examined without removing elements
 
     Args:
         queue (_type_): _description_
     """
+
     def peek(self):
         with self.mutex:
-            return(self.queue)
+            return self.queue

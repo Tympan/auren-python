@@ -12,10 +12,11 @@ class Model:
     """
     Generic Class for 1D plane wave models of tubes
     """
+
     rho = 1.225 * units.kg / units.m ** 3  # Density of fluid (air by default)
-    sound_speed = 343 * units.m / units.s # Speed of sound in fluid (Air at 20°C by default)
-    absorption_loss = 0 # Absorption loss -- imaginary value of K re f
-    absorption_loss2 = 0 # Absorption loss -- imaginary value of K re f^3
+    sound_speed = 343 * units.m / units.s  # Speed of sound in fluid (Air at 20°C by default)
+    absorption_loss = 0  # Absorption loss -- imaginary value of K re f
+    absorption_loss2 = 0  # Absorption loss -- imaginary value of K re f^3
 
     def u(self, f, x):
         """Return value of velocity(u) at given frequencies and x positions in the tube
@@ -70,8 +71,7 @@ class Model:
 
     @property
     def z0(self):
-        """The characteristic impedance = density / sound_speed
-        """
+        """The characteristic impedance = density / sound_speed"""
         return self.rho * self.sound_speed
 
     def k(self, f):
@@ -88,11 +88,13 @@ class Model:
             The wave number k = 2πf / c (1 - iα)
         """
         omega = np.pi * 2 * f / self.sound_speed
-        return omega * (1 - 1j * (self.absorption_loss + self.absorption_loss2 * omega.magnitude**2))
+        return omega * (1 - 1j * (self.absorption_loss + self.absorption_loss2 * omega.magnitude ** 2))
+
     #     return np.pi * 2 * f / self.sound_speed
 
     # def alpha(self, f):
     #     return self.k(f) * self.absorption_loss
+
 
 def straight_tube_derivation():
     """Derives the equations for the coefficients of the forwards (+x) (A) and reverse (-x) B waves given
@@ -101,13 +103,14 @@ def straight_tube_derivation():
     The solution for the pressure is: P = Ae^{ikx} + Be^{-ikx}
     """
     A, B, P0, PL, R0, RL, L, k, x = sym.symbols("A, B, P0, PL, R0, RL, L, k, x")
-    eqn0 = A * sym.exp(-1j*k*0) + B * sym.exp(1j*k*0) - ((1 + R0) * B * sym.exp(1j*k*0) + P0)
-    eqn1 = A * sym.exp(-1j*k*L) + B * sym.exp(1j*k*L) - ((1 + RL) * A * sym.exp(-1j*k*L) + PL)
+    eqn0 = A * sym.exp(-1j * k * 0) + B * sym.exp(1j * k * 0) - ((1 + R0) * B * sym.exp(1j * k * 0) + P0)
+    eqn1 = A * sym.exp(-1j * k * L) + B * sym.exp(1j * k * L) - ((1 + RL) * A * sym.exp(-1j * k * L) + PL)
     a = sym.solve(eqn0, A)[0]
     eqn2 = eqn1.subs(A, a)
     b = sym.solve(eqn2, B)[0]
-    print ("A =", a)
-    print ("B =", b)
+    print("A =", a)
+    print("B =", b)
+
 
 def straight_tube_derivation_from_measurements():
     """Derives the equations for the coefficients of the forwards (+x) (A) and reverse (-x) B waves given
@@ -116,14 +119,15 @@ def straight_tube_derivation_from_measurements():
     The solution for the pressure is: P = Ae^{ikx} + Be^{-ikx}
     """
     A, B, p0, p1, k, x0, x1 = sym.symbols("A, B, p0, p1, k, x0, x1")
-    eqn0 = A * sym.exp(-1j*k*x0) + B * sym.exp(1j*k*x0) - p0
-    eqn1 = A * sym.exp(-1j*k*x1) + B * sym.exp(1j*k*x1) - p1
+    eqn0 = A * sym.exp(-1j * k * x0) + B * sym.exp(1j * k * x0) - p0
+    eqn1 = A * sym.exp(-1j * k * x1) + B * sym.exp(1j * k * x1) - p1
     s = sym.solve([eqn0, eqn1], [A, B])
     a = sym.solve(eqn0, A)[0]
     eqn2 = eqn1.subs(A, a)
     b = sym.solve(eqn2, B)[0]
-    print ("A =", a)
-    print ("B =", b)
+    print("A =", a)
+    print("B =", b)
+
 
 def straight_tube_calibration_from_measurements_direct():
     """Derives the equations for the coefficients of the forwards (+x) (A) and reverse (-x) B waves given
@@ -132,30 +136,31 @@ def straight_tube_calibration_from_measurements_direct():
     The solution for the pressure is: P = Ae^{ikx} + Be^{-ikx}
     """
     Aa, Ab, Ba, Bb, c0, c1, p0a, p0b, p1a, p1b, p2a, p2b, k, x0, x1, x2 = sym.symbols(
-        "Aa, Ab, Ba, Bb, c0, c1, p0a, p0b p1a, p1b, p2a, p2b, k, x0, x1, x2")
-    eqn0a = Aa * sym.exp(-1j*k*x0) + Ba * sym.exp(1j*k*x0) - p0a * c0
-    eqn1a = Aa * sym.exp(-1j*k*x1) + Ba * sym.exp(1j*k*x1) - p1a * c1
-    eqn2a = Aa * sym.exp(-1j*k*x2) + Ba * sym.exp(1j*k*x2) - p2a
-    eqn0b = Ab * sym.exp(-1j*k*x0) + Bb * sym.exp(1j*k*x0) - p0b * c0
-    eqn1b = Ab * sym.exp(-1j*k*x1) + Bb * sym.exp(1j*k*x1) - p1b * c1
-    eqn2b = Ab * sym.exp(-1j*k*x2) + Bb * sym.exp(1j*k*x2) - p2b
+        "Aa, Ab, Ba, Bb, c0, c1, p0a, p0b p1a, p1b, p2a, p2b, k, x0, x1, x2"
+    )
+    eqn0a = Aa * sym.exp(-1j * k * x0) + Ba * sym.exp(1j * k * x0) - p0a * c0
+    eqn1a = Aa * sym.exp(-1j * k * x1) + Ba * sym.exp(1j * k * x1) - p1a * c1
+    eqn2a = Aa * sym.exp(-1j * k * x2) + Ba * sym.exp(1j * k * x2) - p2a
+    eqn0b = Ab * sym.exp(-1j * k * x0) + Bb * sym.exp(1j * k * x0) - p0b * c0
+    eqn1b = Ab * sym.exp(-1j * k * x1) + Bb * sym.exp(1j * k * x1) - p1b * c1
+    eqn2b = Ab * sym.exp(-1j * k * x2) + Bb * sym.exp(1j * k * x2) - p2b
     s = sym.solve([eqn0a, eqn1a, eqn0b, eqn1b, eqn2a, eqn2b], [Aa, Ab, Ba, Bb, c0, c1])
     a = sym.solve(eqn0, A)[0]
     eqn2 = eqn1.subs(A, a)
     b = sym.solve(eqn2, B)[0]
-    print ("A =", a)
-    print ("B =", b)
+    print("A =", a)
+    print("B =", b)
+
 
 def two_diameter_tube_from_measurements_deriviation():
-    A1, A2, B1, B2, x0, x1, xp, z1, z2, k, x, p0, p1 = \
-        sym.symbols("A1, A2, B1, B2, x0, x1, xp, z1, z2, k, x, p0, p1")
+    A1, A2, B1, B2, x0, x1, xp, z1, z2, k, x, p0, p1 = sym.symbols("A1, A2, B1, B2, x0, x1, xp, z1, z2, k, x, p0, p1")
     e = sym.exp
-    eqn0 = A1 * e(-1j*k*x0) + B1 * e(1j*k*x0) - p0
-    eqn1 = A1 * e(-1j*k*x1) + B1 * e(1j*k*x1) - p1
+    eqn0 = A1 * e(-1j * k * x0) + B1 * e(1j * k * x0) - p0
+    eqn1 = A1 * e(-1j * k * x1) + B1 * e(1j * k * x1) - p1
     # Continuity of pressure across interface
-    eqn2 = A1 * e(-1j*k*xp) + B1 * e(1j*k*xp) - (A2 * e(-1j*k*xp) + B2 * e(1j*k*xp))
+    eqn2 = A1 * e(-1j * k * xp) + B1 * e(1j * k * xp) - (A2 * e(-1j * k * xp) + B2 * e(1j * k * xp))
     # Continuity of volume flow rate across interface
-    eqn3 = A1 / z1 * e(-1j*k*xp) - B1 / z1 * e(1j*k*xp) - (A2 / z2 * e(-1j*k*xp) - B2 / z2 * e(1j*k*xp))
+    eqn3 = A1 / z1 * e(-1j * k * xp) - B1 / z1 * e(1j * k * xp) - (A2 / z2 * e(-1j * k * xp) - B2 / z2 * e(1j * k * xp))
     a1 = sym.solve(eqn0, A1)[0]
     eqn1a = eqn1.subs(A1, a1)
     b1 = sym.solve(eqn1a, B1)[0]
@@ -165,15 +170,15 @@ def two_diameter_tube_from_measurements_deriviation():
 
     sol = sym.solve([eqn0, eqn1, eqn2, eqn3], (A1, B1, A2, B2))
 
-    print ("A1 = ", a1)
-    print ("B1 =", b1)
-    print ("A2 =", a2)
-    print ("B2 =", b2)
-
+    print("A1 = ", a1)
+    print("B1 =", b1)
+    print("A2 =", a2)
+    print("B2 =", b2)
 
 
 class StraightTube(Model):
     """ Generates solutions for tube of constant cross section (straight) """
+
     def __init__(self, L, P0, PL, R0, RL, rho=None, sound_speed=None, absorption_loss=0):
         self.L = L
         self.R0 = R0
@@ -229,9 +234,8 @@ class StraightTube(Model):
         B = self.B(k)
         P = self.A(k, B=B) * np.exp(-1j * k * x) + B * np.exp(1j * k * x)
         # P = self.A(k, B=B) * np.exp(-1j * k * x) * np.exp(-alpha * x) \
-            # + B * np.exp(1j * k * x) * np.exp(-alpha * (self.L - x))
+        # + B * np.exp(1j * k * x) * np.exp(-alpha * (self.L - x))
         return P
-
 
     def A(self, k, x=None, B=None):
         """Computes the complex forward wave amplitude coefficient
@@ -270,7 +274,7 @@ class StraightTube(Model):
             Complex reverse wave amplitude Ae^ikx
         """
         L, R0, RL, P0, PL = self.L, self.R0, self.RL, self.P0, self.PL
-        B = (np.exp(1j * k * L) * PL + RL * P0) / (np.exp(1j * k * 2 * L) - R0 * RL )
+        B = (np.exp(1j * k * L) * PL + RL * P0) / (np.exp(1j * k * 2 * L) - R0 * RL)
         return B
 
     def u_measured(self, f, x, x0, x1, p0, p1, A=None, B=None):
@@ -327,7 +331,9 @@ class StraightTube(Model):
         return A
 
     def B_measured(self, k, x, x0, x1, p0, p1):
-        B = (p0 * np.exp(1j * k * x0) - p1 * np.exp(1j * k * x1)) / (np.exp(2.0 * 1j * k * x0) - np.exp(2.0 * 1j * k * x1))
+        B = (p0 * np.exp(1j * k * x0) - p1 * np.exp(1j * k * x1)) / (
+            np.exp(2.0 * 1j * k * x0) - np.exp(2.0 * 1j * k * x1)
+        )
         return B
 
     def widget_frequency(self, f, xs, other_plot=None, val="z", fig_num=1, figkwargs={}, params={}):
@@ -377,8 +383,8 @@ class StraightTube(Model):
 
             for x in xs:
                 if other_plot is not None:
-                    ax[0].loglog(f.magnitude, np.abs(other_plot), 'k', alpha=0.5)
-                    ax[1].semilogx(f.magnitude, np.rad2deg(np.angle(other_plot)), 'k', alpha=0.5)
+                    ax[0].loglog(f.magnitude, np.abs(other_plot), "k", alpha=0.5)
+                    ax[1].semilogx(f.magnitude, np.rad2deg(np.angle(other_plot)), "k", alpha=0.5)
                 v = func(f, x).magnitude
                 h0 = ax[0].loglog(f.magnitude, np.abs(v))[0]
                 h1 = ax[1].semilogx(f.magnitude, np.rad2deg(np.angle(v)))[0]
@@ -409,6 +415,7 @@ class StraightTube(Model):
                     h[0].set_ydata(np.abs(v))
                     h[1].set_ydata(np.rad2deg(np.angle(v)))
                 ax[0].set_ylim([my_min, my_max])
+
         Lunits = self.L.units
         L = ipywidgets.FloatSlider(
             value=params.get("L", self.L.magnitude),
@@ -421,11 +428,25 @@ class StraightTube(Model):
         T = ipywidgets.FloatSlider(value=params.get("T", 21.5), min=0, max=40, step=0.1, description=r"$Temperature$")
         R0 = ipywidgets.FloatSlider(value=params.get("R0", self.R0), min=0, max=1, step=0.01, description=r"$R_{0}$")
         RL = ipywidgets.FloatSlider(value=params.get("RL", self.RL), min=0, max=1, step=0.01, description=r"$R_{L}$")
-        alpha = ipywidgets.FloatSlider(value=params.get("alpha", self.absorption_loss), min=0, max=0.1, step=0.1 / 128, description=r"$\alpha_{loss}$")
-        alpha2 = ipywidgets.FloatSlider(value=params.get("alpha2", self.absorption_loss2), min=0, max=0.000001/3, step=.000001/3 / 128, description=r"$\alpha_{loss,2}$")
+        alpha = ipywidgets.FloatSlider(
+            value=params.get("alpha", self.absorption_loss),
+            min=0,
+            max=0.1,
+            step=0.1 / 128,
+            description=r"$\alpha_{loss}$",
+        )
+        alpha2 = ipywidgets.FloatSlider(
+            value=params.get("alpha2", self.absorption_loss2),
+            min=0,
+            max=0.000001 / 3,
+            step=0.000001 / 3 / 128,
+            description=r"$\alpha_{loss,2}$",
+        )
         P0 = ipywidgets.Checkbox(value=params.get("P0", self.P0), description=r"$P_0$")
         PL = ipywidgets.Checkbox(value=params.get("PL", self.PL), description=r"$P_L$")
-        xoff = ipywidgets.FloatSlider(value=params.get("x_off", 0), min=-2, max=2, step=0.1, description=r"x-position offset")
+        xoff = ipywidgets.FloatSlider(
+            value=params.get("x_off", 0), min=-2, max=2, step=0.1, description=r"x-position offset"
+        )
 
         L.observe(update_plot)
         T.observe(update_plot)
@@ -437,12 +458,19 @@ class StraightTube(Model):
         PL.observe(update_plot)
         xoff.observe(update_plot)
 
-        container = ipywidgets.VBox([ipywidgets.VBox([ipywidgets.HBox([R0, RL,alpha]), ipywidgets.HBox([P0, PL, alpha2])]), ipywidgets.HBox([T, L, xoff]), plot_out])
+        container = ipywidgets.VBox(
+            [
+                ipywidgets.VBox([ipywidgets.HBox([R0, RL, alpha]), ipywidgets.HBox([P0, PL, alpha2])]),
+                ipywidgets.HBox([T, L, xoff]),
+                plot_out,
+            ]
+        )
 
         # For debugging
         self.handles = handles
         self.ax = ax
         return container
+
 
 class TwoDiameterTube(StraightTube):
     D0 = None
@@ -453,14 +481,13 @@ class TwoDiameterTube(StraightTube):
 
     @property
     def za0(self):
-        area0 = 0.25 * np.pi * self.D0 **2
+        area0 = 0.25 * np.pi * self.D0 ** 2
         return self.z0 / area0
 
     @property
     def za1(self):
-        area1 = 0.25 * np.pi * self.D1 **2
+        area1 = 0.25 * np.pi * self.D1 ** 2
         return self.z0 / area1
-
 
     def __init__(self, x0, x1, xp, D0, D1, rho=None, sound_speed=None, absorption_loss=0):
         """Constructor for Two-Diameter Tube model
@@ -507,9 +534,12 @@ class TwoDiameterTube(StraightTube):
         return A2
 
     def B1_measured(self, k, A0, B0):
-        B1 =  0.5 * A0 * np.exp(-2j * k * self.xp) \
-            - 0.5 * A0 * self.za1 * np.exp(-2j * k * self.xp) / self.za0\
-            + 0.5 * B0 + 0.5 * B0 * self.za1 / self.za0
+        B1 = (
+            0.5 * A0 * np.exp(-2j * k * self.xp)
+            - 0.5 * A0 * self.za1 * np.exp(-2j * k * self.xp) / self.za0
+            + 0.5 * B0
+            + 0.5 * B0 * self.za1 / self.za0
+        )
         return B1
 
     def u_measured(self, f, x, p0, p1, A0=None, B0=None, A1=None, B1=None):
@@ -546,7 +576,6 @@ class TwoDiameterTube(StraightTube):
         if A1 is None:
             A1 = self.A1_measured(k, A0, B0, B1)
         return (A1 * np.exp(-1j * k * x) - B1 * np.exp(1j * k * x)) / self.z0
-
 
     def p_measured(self, f, x, p0, p1, A0=None, B0=None, A1=None, B1=None):
         """Return value of pressure (p) at given frequencies and x positions in the straight tube
