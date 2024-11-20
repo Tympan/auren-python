@@ -1,5 +1,7 @@
 import numpy as np
 from scipy import optimize, signal, ndimage
+from numpydantic import NDArray
+import typing as t
 
 
 def to_fourier(time_series: np.ndarray, samplerate: float) -> tuple[np.ndarray, np.ndarray]:
@@ -27,6 +29,25 @@ def to_fourier(time_series: np.ndarray, samplerate: float) -> tuple[np.ndarray, 
     fourier = np.sqrt(2) * fourier[..., : frequency.size] / n
 
     return frequency, fourier
+
+
+def from_fourier(fourier: np.ndarray) -> np.ndarray:
+    """Generates a time signal from a fourier representation created using `to_fourier`
+
+    Parameters
+    ----------
+    fourier : np.ndarray
+        The complex coefficients of the fourier series
+
+    Returns
+    -------
+    np.ndarray
+        The time signal
+    """
+    a = fourier / np.sqrt(2) * (fourier.shape[-1] * 4)
+    a = np.concatenate([a, a[1::-1]])
+    time_series = np.fft.ifft(a, n=fourier.shape[-1] * 2, axis=-1)
+    return np.real(time_series)
 
 
 def find_subsample_alignment_offsets(
@@ -223,3 +244,204 @@ def trim_signal_mean_amplitude(
     if return_index:
         return slc
     return data[..., slc]
+
+
+def make_chirp(
+    times: np.ndarray,
+    f0: float,
+    f1: float,
+    amplitude_func=None,
+    phi: float = 0,
+    return_freq: bool = False,
+    return_phase: bool = False,
+) -> np.ndarray:
+    """Generates a logarithmic/exponential chirp in the time domain
+
+    Parameters
+    ----------
+    times : np.ndarray
+        Array of times
+    f0 : float
+        Starting frequency
+    f1 : float
+        Ending frequency
+    amplitude_func : function, optional
+        function of frequency -- used to modulate amplitude of the chirp depending on the current frequency, by default uses amplitude of 1
+    phi : int, optional
+        Phase offset in radians, by default 0
+    return_freq : bool, optional
+        Default is False. If True, also returns the frequency as a function of time for the chirp as the SECOND argument
+
+    Returns
+    -------
+    np.ndarray
+        The chirp signal
+    """
+    if amplitude_func is None:
+        amplitude_func = lambda f: 1
+    t1 = times.max()
+    # See https://en.wikipedia.org/wiki/Chirp#Exponential
+    freq = f0 * (pow(f1 / f0, (times / t1)))
+    beta = t1 / np.log(f1 / f0)
+    phase = 2 * np.pi * beta * (freq - f0)  # -f0 is a phase shift because scipy uses cos and wikipedia uses sin
+    signal = amplitude_func(freq) * np.cos(phase + phi)
+    if not (return_freq or return_phase):
+        return signal
+    out = [signal]
+    if return_freq:
+        out.append(freq)
+    if return_phase:
+        out.append(phase)
+    return tuple(out)
+
+
+def make_multi_chirp(
+    frequencies: t.List[float],
+    durations: t.List[float],
+    samplerate: float,
+    amplitude_func=None,
+    phi: float = 0,
+    return_freq: bool = False,
+    return_phase: bool = False,
+    pad_time=0,
+) -> np.ndarray:
+    """Generates a logarithmic/exponential chirp in the time domain
+
+    Parameters
+    ----------
+    frequencies : list[float]
+        List of frequencies
+    durations : list[float]
+        List of durations. len(durations) == len(frequencies) - 1, and total_duration is sum(durations)
+    samplerate : float
+        Samplerate for the time signal
+    amplitude_func : function, optional
+        function of frequency -- used to modulate amplitude of the chirp depending on the current frequency, by default uses amplitude of 1
+    phi : int, optional
+        Phase offset in radians, by default 0
+    return_freq : bool, optional
+        Default is False. If True, also returns the frequency as a function of time for the chirp as the SECOND argument
+
+    Returns
+    -------
+    np.ndarray
+        The time array
+    np.ndarray
+        The chirp signal
+    np.ndarray, optional if return_freq == True
+        The frequency at each time sample
+    """
+
+    total_duration = int(np.sum(durations) * samplerate) / samplerate
+    times = np.linspace(0, total_duration, int(total_duration * samplerate))
+    data = np.zeros(times.shape)
+    f_at_t = np.zeros(times.shape)
+    p_at_t = np.zeros(times.shape)
+
+    durations_sum = 0
+    last_phase = phi
+    for i, dur in enumerate(durations):
+        I = (times >= durations_sum) & (times < (durations_sum + dur + 1 / samplerate))
+        durations_sum += dur
+        s, fatt, patt = make_chirp(
+            times[I] - times[I][0],
+            frequencies[i],
+            frequencies[i + 1],
+            amplitude_func,
+            last_phase,
+            return_freq=True,
+            return_phase=True,
+        )
+        data[I] = s
+        f_at_t[I] = fatt
+        p_at_t[I] = patt + last_phase
+        last_phase = patt[-1]
+
+    if pad_time > 0:
+        times, data = pad_chirp(times, data, frequencies[0], frequencies[-1], pad_time, phi, last_phase=p_at_t[-1])
+
+    out = [times, data]
+    if return_freq:
+        out.append(f_at_t)
+    if return_phase:
+        out.append(p_at_t)
+    return tuple(out)
+
+
+def pad_chirp(
+    times: np.ndarray, signal: np.ndarray, f0: float, f1: float, pad_time: float, phi: float = 0, last_phase=0
+):
+    """Pads a time series signal -- specifically a chirp, with an increasing amplitude wave at the start
+    and end of the signal.
+
+    Parameters
+    ----------
+    times : np.ndarray
+        The times
+    signal : np.ndarray
+        The chirp to be padded
+    f0 : float
+        Starting frequency
+    f1 : float
+        Ending frequency
+    pad_time : float
+        Time to add to start/end of signal for padding
+    phi : int, optional
+        Phase offset in radians, by default 0
+    Returns
+    -------
+    np.ndarray
+        New times for padded signal (times go negative)
+    np.ndarray
+        New padded chirp signal
+    """
+    dt = times[1] - times[0]
+    n = int(pad_time // dt)
+    pad_time = n * dt
+
+    if not last_phase:
+        t1 = times[-1]
+        # See https://en.wikipedia.org/wiki/Chirp#Exponential
+        # freq = f0 * (pow(f1 / f0, (times / t1)))
+        beta = t1 / np.log(f1 / f0)
+        last_phase = (
+            2 * np.pi * beta * (f1 - f0)
+        )  # -f0 is a last_phase shift because scipy uses cos and wikipedia uses sin
+
+    pad_times = np.linspace(0, pad_time, n)
+    new_times = np.concatenate([pad_times - pad_time - dt, times, pad_times + times.max() + dt])
+    a0 = signal[0] / np.cos(2 * np.pi * f0 * times[0] + phi) * pad_times / pad_times.max()
+    a1 = signal[-1] / np.cos(2 * np.pi * f1 * times[-1] + phi + last_phase) * pad_times[::-1] / pad_times.max()
+    new_signal = np.concatenate(
+        [np.cos(2 * np.pi * f0 * new_times[:n] + phi) * a0, signal, np.cos(2 * np.pi * f1 * new_times[-n:] + phi) * a1]
+    )
+    return new_times, new_signal
+
+
+def dft_known_basis(
+    data: NDArray,
+    f_at_sample: NDArray,
+    basis_real: NDArray,
+    basis_imag: NDArray,
+    block_size: int = 2048,
+    n_regions: int = 256,
+) -> t.Tuple[NDArray, NDArray]:
+
+    n_samples = data.shape[-1]
+    start_inds = np.round(np.linspace(0, n_samples - block_size, n_regions)).astype(int)
+
+    han_win = signal.windows.hann(block_size, sym=True)
+    # Normalize so we can use it with the orthogonal basis
+    han_win = han_win / han_win.mean()
+
+    # Initialize outputs
+    f_centers = f_at_sample[start_inds + block_size // 2]
+    fourier = np.zeros(data.shape[:-1] + (n_regions,), complex)
+
+    for i, start_ind in enumerate(start_inds):
+        slc = slice(start_ind, start_ind + block_size)
+        real = (basis_real[..., slc] * data[..., slc] * han_win).mean(axis=-1)
+        imag = (basis_imag[..., slc] * data[..., slc] * han_win).mean(axis=-1)
+        fourier[..., i] = 2 * (real + 1j * imag)
+
+    return f_centers, fourier
