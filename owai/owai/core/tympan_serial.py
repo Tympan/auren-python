@@ -133,6 +133,10 @@ class TympanSerial:
             #print("Starting Rx thread")
             self.start_rx_thread()
 
+        # Clear buffer, printing any incoming messages
+        if (err is None) and connected_flag:
+            print(self.read_all())
+
         return err
 
     def send_char(self, command_char, eol_str='\n'):
