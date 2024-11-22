@@ -11,7 +11,7 @@ from scipy import ndimage
 import owai
 import owai.core.data_models as dm
 from owai.core import io, model
-from owai.core.signal_processing_utils import dft_known_basis, pad_chirp
+from owai.core.signal_processing_utils import dft_known_basis, pad_chirp, to_fourier
 from owai.core.tympan_serial import TympanSerial
 from owai.core.utils import todB
 
@@ -46,20 +46,22 @@ class Calibrate(BaseModel):
     sound_speed: float = 343  # m/s
 
     ref_mic_sensitivity: float = 2.28  # mv/Pa
-    tympan_full_scale_voltage: float = 1  # Volts
+    tympan_full_scale_voltage: float = 0.375 * np.sqrt(2)  # Volts
+    trim_frequency: float = 16000  # Frequency used to figure out the data offset and then trim the signal
 
     ### OUTPUTS Section ###
 
     calibration: dm.CalibrationData = None
 
     # Add ALL the calibration information for debugging and archeology
-    rel_cal :  t.Optional[NDArray[Shape["* frequencies, * channels"], complex]] = None
+    trimmed_data: t.Optional[NDArray[Shape["* tubes, * times, * channels"], float]] = None
+    rel_cal: t.Optional[NDArray[Shape["* frequencies, * channels"], complex]] = None
     abs_cal: t.Optional[NDArray[Shape["* frequencies"], float]] = None
-    p_cal :  t.Optional[NDArray[Shape["* tubes, * channels, * frequencies"], complex]] = None
+    p_cal: t.Optional[NDArray[Shape["* tubes, * channels, * frequencies"], complex]] = None
     cal: t.Optional[NDArray[Shape["* channels, * frequencies, 3 freqAmpPhase"], float]] = None
-    fourier:  t.Optional[NDArray[Shape["* tubes, * channels, * frequencies"], complex]] = None
-    fourier_ref:  t.Optional[NDArray[Shape["* tubes, * frequencies"], complex]] = None
-    fourier_freq:  t.Optional[NDArray[Shape["* frequencies"], complex]] = None
+    fourier: t.Optional[NDArray[Shape["* tubes, * channels, * frequencies"], complex]] = None
+    fourier_ref: t.Optional[NDArray[Shape["* tubes, * frequencies"], complex]] = None
+    fourier_freq: t.Optional[NDArray[Shape["* frequencies"], complex]] = None
     real_basis: t.Optional[t.List[NDArray]] = None
     imag_basis: t.Optional[t.List[NDArray]] = None
     f_at_sample: t.Optional[NDArray[Shape["* frequencies"], float]] = None
@@ -197,12 +199,9 @@ class Calibrate(BaseModel):
 
     def make_cal_chirps(self) -> t.List[NDArray]:
         amp = 10 ** (self.calibration_tone_db / 20)
-        tones = [
-            self.calibration_mic_tone_specs.get(pad_time=self.calibration_pad_time)[1] * amp
-        ]
+        tones = [self.calibration_mic_tone_specs.get(pad_time=self.calibration_pad_time)[1] * amp]
         speaker_tones = [
-            csts.get(pad_time=self.calibration_pad_time)[1] * amp
-            for csts in self.calibration_speaker_tone_specs
+            csts.get(pad_time=self.calibration_pad_time)[1] * amp for csts in self.calibration_speaker_tone_specs
         ]
 
         self._calibration_tones = tones
@@ -233,8 +232,10 @@ class Calibrate(BaseModel):
 
         # Step 2: Fourier transform the raw data
         data_id = list(self.raw_data._tones_dict.keys()).index(self.calibration_mic_tone_specs.id)
+        # Trim the data
+        self.trimmed_data = self._trim_data(self.raw_data.data[data_id], real_basis, imag_basis, f_at_sample, n_samples, trim_freq=self.trim_frequency)
         f_centers, fourier = self._fourier_transform_raw_data(
-            self.raw_data.data[data_id],
+            self.trimmed_data,
             real_basis,
             imag_basis,
             f_at_sample,
@@ -277,6 +278,7 @@ class Calibrate(BaseModel):
         self.fourier = fourier
         self.fourier_ref = fourier_ref
         self.fourier_freq = f_centers
+        self.real_basis = real_basis
         self.imag_basis = imag_basis
         self.f_at_sample = f_at_sample
 
@@ -360,22 +362,116 @@ class Calibrate(BaseModel):
     def plot_calibration_checks(self, kwargs={}, figkwargs={}, show=True):
         # Plot the fourier transforms, to make sure they look reasonable
 
+        classic_bins, classic_fourier = to_fourier(self.trimmed_data, self.raw_data.samplerate)
+        tone_freqs = self.calibration_mic_tone_specs.frequencies
+        tone_durations = self.calibration_mic_tone_specs.durations
+        classic_fourier = classic_fourier[..., (classic_bins >= tone_freqs[0]) & (classic_bins <= tone_freqs[-1])]
+        classic_bins = classic_bins[(classic_bins >= tone_freqs[0]) & (classic_bins <= tone_freqs[-1])]
+        classic_fourier_scale = (
+            np.sqrt(2)
+            / np.sqrt(
+                tone_durations[0]
+                / classic_bins
+                / (np.log(tone_freqs[1]) - np.log(tone_freqs[0]))
+                * (classic_bins < tone_freqs[1])
+                + tone_durations[1]
+                / classic_bins
+                / (np.log(tone_freqs[2]) - np.log(tone_freqs[1]))
+                * (classic_bins > tone_freqs[1])
+            )
+            * np.sum(tone_durations)
+        )
+
         fig, axs = plt.subplots(2, 2, sharex=True, sharey=True, **figkwargs)
+        fig.suptitle("Amplitude")
         for i in range(4):
             ii = i // 2
             jj = i % 2
-            axs[ii, jj].semilogx(self.fourier_freq / 1000, todB(self.fourier[i]).T, **kwargs)
+            axs[ii, jj].semilogx(self.fourier_freq / 1000, todB(self.fourier[i]).T, lw=2, **kwargs)
+            axs[ii, jj].set_prop_cycle(None)
+            axs[ii, jj].semilogx(
+                classic_bins / 1000, todB(classic_fourier[i] * classic_fourier_scale).T, alpha=0.5, lw=4, **kwargs
+            )
             axs[ii, jj].set_title(f"Tube {i}")
-        axs[0, 0].legend()
+        axs[0, 0].legend([0, 1, 2, 3])
+        axs[0, 0].set_xlabel("Frequency(kHz)")
+        axs[0, 0].set_ylabel("Amplitude (dB SPL uncal)")
+        # plt.show()
+        expected_fourier = dft_known_basis(
+            self.real_basis[1][..., 0],
+            self.f_at_sample,
+            self.real_basis[1][..., 0],
+            self.imag_basis[1][..., 0],
+            block_size=self.calibration_block_size,
+            n_regions=self.number_of_calibration_frequency_bins * self.bin_oversampling,
+        )
+        expected_phase = np.angle(expected_fourier[1])
+        fig, axs = plt.subplots(2, 2, sharex=True, sharey=True, **figkwargs)
+        fig.suptitle("Phase")
+        for i in range(4):
+            ii = i // 2
+            jj = i % 2
+            axs[ii, jj].semilogx(self.fourier_freq / 1000, expected_phase * 0, "k", alpha=0.4, **kwargs)
+            axs[ii, jj].semilogx(self.fourier_freq / 1000, (np.angle(self.fourier[i]) - expected_phase * 0).T, **kwargs)
+            # axs[ii, jj].semilogx(self.fourier_freq / 1000, expected_phase, 'k', alpha=0.4, **kwargs)
+            axs[ii, jj].set_title(f"Tube {i}")
+        axs[0, 0].legend(["ref", 0, 1, 2, 3])
+        axs[0, 0].set_xlabel("Frequency(kHz)")
+        axs[0, 0].set_ylabel("Phase (°)")
 
         if show:
             plt.show()
 
-
     ######## PRIVATE METHODS
+    def _trim_data(self, data, real_basis, imag_basis, f_at_sample, n_samples, trim_freq):
+        # trim_freq = self.calibration_block_size * 8
+        i = np.argmin(np.abs(f_at_sample - trim_freq))
+        sym_pad = (data.shape[-1] - real_basis[1].shape[0]) // 2
+
+        sub_slice = slice(i - int(self.calibration_block_size * 1.5) + sym_pad, i + int(self.calibration_block_size * 1.5) + 1 + sym_pad)
+        sub_slice2 = slice(i - self.calibration_block_size // 2, i + self.calibration_block_size // 2 + 1)
+        subdata = data[..., sub_slice]
+        r_base = real_basis[1][sub_slice2, 0]
+        i_base = imag_basis[1][sub_slice2, 0]
+
+        real_c = ndimage.convolve1d(subdata, r_base[::-1], axis=-1)
+        imag_c = ndimage.convolve1d(subdata, i_base[::-1], axis=-1)
+        mag_c = np.sqrt(real_c ** 2 + imag_c ** 2)  #[..., self.calibration_block_size // 2: self.calibration_block_size // 2 + self.calibration_block_size]
+        # tube = 3
+        # t = np.arange(mag_c.shape[-1]) - mag_c.shape[-1] // 2
+        # plt.plot(real_c[tube, 0])
+        # plt.plot(imag_c[tube, 0])
+        # plt.plot(mag_c[tube, 0])
+        # plt.show()
+        # plt.plot(t, mag_c[tube].T)
+        # plt.show()
+        offset = np.argmax(mag_c, axis=-1) - mag_c.shape[-1] // 2
+        offset = np.round(offset.mean(axis=1)).astype(int)  # Average over the channels
+
+        new_shape = list(data.shape)
+        new_shape[-1] = n_samples
+        new_data = np.zeros(new_shape)
+        for i, off in enumerate(offset):
+            new_data[i] = data[i, ..., sym_pad + off: sym_pad + off + n_samples]
+
+        # Check
+        # tube = 0
+        # chan = 0
+        # print("This: ",
+        #     np.sqrt((new_data[tube, chan, sub_slice2] * r_base).sum() ** 2 + (new_data[tube, chan, sub_slice2] * i_base).sum() ** 2),
+        #     " should roughly equal: ",
+        #     mag_c[tube, chan, offset[tube] + mag_c.shape[-1] // 2]
+        # )
+
+        return new_data
+
 
     def _fourier_transform_raw_data(self, data_raw, real_basis, imag_basis, f_at_sample, n_samples):
-        pad_samples = int(np.round(self.calibration_pad_time * self.raw_data.samplerate))
+        # The Tympan firmware adds some padding before and after playing the .wav file ON TOP of our
+        # padding for the ramp-up period. Thankfully, both are symmetric, so we can just figure out
+        # the padding based on the difference in size between the recorded and expected signals
+
+        pad_samples = (data_raw.shape[2] - real_basis[1].shape[0]) // 2
         raw_clipped = data_raw[..., pad_samples : pad_samples + n_samples]
         f_centers, fourier = dft_known_basis(
             raw_clipped,
@@ -399,7 +495,7 @@ class Calibrate(BaseModel):
                 real = np.convolve(data_ref[i], real_block[::-1], "same")
                 imag = np.convolve(data_ref[i], imag_block[::-1], "same")
                 # ind = np.argmax(real - np.abs(imag))  # 0 phase mean 0 imaginary part, max amplitude on real
-                ind = max([n_samples, np.argmax(real ** 2 + imag * 2)])  # max amplitude agreement
+                ind = max([n_samples, np.argmax(real**2 + imag ** 2)])  # max amplitude agreement
                 raw_clipped.append(data_ref[i, ind - n_samples : ind])
             raw_clipped = np.stack(raw_clipped, axis=0)
         else:

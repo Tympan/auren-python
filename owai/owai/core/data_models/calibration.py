@@ -140,10 +140,13 @@ class RawCalibrationData(BaseModel):
             data = self.data[i]
             tone_id = list(self._tones_dict.keys())[i]
             tone = None
+            expected_freq = None
+            times = None
             title = ""
             for f in self.file_meta_data:
                 if f.tone.id == tone_id:
                     tone = f.tone
+                    times, _, expected_freq = tone.get(return_freq=True)
                     if np.all(tone.channels):
                         title = "Mic Calibration"
                     elif tone.channels[0]:
@@ -151,6 +154,7 @@ class RawCalibrationData(BaseModel):
                     elif tone.channels[1]:
                         title = "Speaker 1 Calibration"
                     break
+            tone_time_offset = ((data.shape[-1] - times.shape[0]) // 2) / kwargs["Fs"]
 
             if tone_id in self._tones_dict_ref:
                 has_ref = True
@@ -160,7 +164,7 @@ class RawCalibrationData(BaseModel):
                 data_ref = None
             cols = data.shape[1] + has_ref
             rows = data.shape[0]
-            fig, axs = plt.subplots(rows, cols, sharex=False, sharey=True, **figkwargs)
+            fig, axs = plt.subplots(rows, cols, sharex=True, sharey=True, **figkwargs)
             fig.suptitle(title)
             axs = np.atleast_2d(axs)
             my_tone = self.file_meta_data[tone_ids.index(list(self._tones_dict.keys())[i])].tone
@@ -170,10 +174,12 @@ class RawCalibrationData(BaseModel):
             for row in range(rows):
                 for col in range(cols - has_ref):
                     axs[row, col].specgram(data[row, col], **kwargs)
+                    axs[row, col].plot(times + tone_time_offset, expected_freq, 'r:', alpha=0.5)
                     axs[rows - 1, col].set_xlabel("Channel {} (s)".format(col))
                 axs[row, 0].set_ylabel("Tube {} (Hz)".format(row))
                 if has_ref:
                     axs[row, cols - 1].specgram(data_ref[row, 0], **kwargs)
+                    axs[row, col].plot(times + tone_time_offset, expected_freq, 'r:', alpha=0.5)
                     axs[rows - 1, cols - 1].set_xlabel("Ref Mic")
             axs[0, 0].set_ylim(ymin, ymax)
 

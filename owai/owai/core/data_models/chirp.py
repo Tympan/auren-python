@@ -34,8 +34,8 @@ class Chirp(IDMixin, GetUnitsMixin, BaseModel):
 
         Returns
         -------
-        t.List[np.ndarray, np.ndarray]
-            times, data
+        Tuple[np.ndarray, np.ndarray] OR Tuple[np.ndarray, np.ndarray, np.ndarray]
+            (times, data) OR (times, frequency_at_time, data)
         """
         r = make_multi_chirp(
             self.frequencies, self.durations, self.samplerate, amplitude_func, phi, return_freq, pad_time=pad_time
