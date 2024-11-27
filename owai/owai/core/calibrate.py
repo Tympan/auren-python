@@ -32,11 +32,13 @@ class Calibrate(BaseModel):
     calibration_ref_start_time_unknown: bool = False
     calibration_data_path: str = "calibration_data"
     calibration_tone_db: float = -10  # dB FS
+    speaker_output_db: float = 65  # dB SPL
 
     calibration_block_size: int = 2048
     number_of_calibration_frequency_bins: int = 256
     bin_oversampling: int = 5
     calibration_smoothing_sigma: float = 9
+    calibration_smoothing_sigma_speaker: float = 0.01
 
     channels: t.List[int] = [1, 2, 3]  # which channels to use for calibration, need at least 3
 
@@ -275,16 +277,16 @@ class Calibrate(BaseModel):
         abs_cal = self._absolute_calibration(f_centers, fourier, fourier_ref, rel_cal, self.probe, tubes, self.channels)
 
         # Step 6: Combine and smooth the calibration
-        cal = self._combine_smooth_cal(f_centers, rel_cal, abs_cal)
+        cal = self._combine_smooth_cal(f_centers, rel_cal, abs_cal, self.channels, self.calibration_smoothing_sigma)
 
         # Step 7: Create the summarized calibration objects for the mics and start populating the full calibration object
         mics = [dm.MicCalibration(cal=c, channel=i) for i, c in enumerate(cal)]
-        cal_obj = dm.CalibrationData(mic=mics)
+        cal_obj = dm.CalibrationData(mic=mics, calibrated_channels=self.channels)
 
         # Calibrate the pressure for the calibration data (to do self-consistency test)
         p_cal = cal_obj.cal_p(f_centers, fourier) * owai.units("Pa")
 
-        # Save ALL the calibration information
+        # Save ALL the calibration information up to this point
         self.calibration = cal_obj
         self.rel_cal = rel_cal
         self.abs_cal = abs_cal
@@ -298,25 +300,64 @@ class Calibrate(BaseModel):
         self.f_at_sample = f_at_sample
 
         # Step 8: Calibrate the speakers
+        # Speaker
+        speaker_cal = np.zeros((len(self.calibration_speaker_tone_specs), self.number_of_calibration_frequency_bins, 2))
+        for i in range(2):
+            real_basis = self.calibration_speaker_tone_specs[i].get()
+            imag_basis = self.calibration_speaker_tone_specs[i].get(phi=np.pi / 2)
+            f_at_sample = self.calibration_speaker_tone_specs[i].get(return_freq=True)[2]
 
-        mic1 = 1
-        mic2 = 3
-        k = self._cavern_model.k(f_centers * owai.units("Hz"))
-        x_mic = self.probe.get_unit("mic_positions")
-        a0 = self._cavern_model.A_measured(
-            k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p_cal[..., mic1, :], p1=p_cal[..., mic2, :]
-        ).magnitude
-        b0 = self._cavern_model.B_measured(
-            k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p_cal[..., mic1, :], p1=p_cal[..., mic2, :]
-        ).magnitude
+            chnls = self.calibration_speaker_tone_specs[i].channels
+            real_basis[1] = real_basis[1][:, chnls]
+            imag_basis[1] = imag_basis[1][:, chnls]
 
-        # stop
-        # plt.semilogx(f_centers, 20 * np.log10(np.abs(a0) / 20e-6).T);
-        # plt.semilogx(f_centers, 20 * np.log10(np.abs(b0) / 20e-6).T, '--')
-        # plt.semilogx(f_centers, 20 * np.log10(np.abs(a0 + b0) / 20e-6).T, ':'); plt.show()
-        # plt.semilogx(f_centers, np.abs(b0 / a0).T); plt.ylim(0, 2); plt.show()
-        # plt.semilogx(f_centers, 20 * np.log10(np.abs(p_cal[0].magnitude) / 20e-6).T);
-        # plt.semilogx(f_centers, 20 * np.log10(np.abs(fourier_ref) / 20e-6).T, '--'); plt.show()
+            n_samples = real_basis[0].shape[-1]
+            data_id = list(self.raw_data._tones_dict.keys()).index(self.calibration_speaker_tone_specs[i].id)
+            # Trim the data
+            trimmed_data, _ = self._trim_data(self.raw_data.data[data_id], real_basis, imag_basis, f_at_sample, n_samples, trim_freq=self.trim_frequency)
+            f_centers, fourier = self._fourier_transform_raw_data(
+                trimmed_data,
+                real_basis,
+                imag_basis,
+                f_at_sample,
+                n_samples,
+            )
+
+            p_cal = cal_obj.cal_p(f_centers, fourier) * owai.units("Pa")
+            mic1 = self.channels[0]
+            mic2 = self.channels[-1]
+            k = self._cavern_model.k(f_centers * owai.units("Hz"))
+            x_mic = self.probe.get_unit("mic_positions")
+            a0 = self._cavern_model.A_measured(
+                k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p_cal[..., mic1, :], p1=p_cal[..., mic2, :]
+            ).magnitude
+            b0 = self._cavern_model.B_measured(
+                k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p_cal[..., mic1, :], p1=p_cal[..., mic2, :]
+            ).magnitude
+
+            # Desired A0
+            db_cal_frac = 10 ** (self.calibration_tone_db / 20)
+            a0_desired_pa = 10**(self.speaker_output_db / 20) * 20e-6
+            # pa_desired = cal_frac * pa_actual / db_cal_frac
+            # cal_frac = pa_desired / pa_actual * db_cal_frac
+            cal_frac = a0_desired_pa / np.abs(a0) * db_cal_frac
+            cal_frac_smooth = self._combine_smooth_cal(f_centers, cal_frac.T, cal_frac.squeeze() * 0 + 1 + 0j, [0], self.calibration_smoothing_sigma_speaker)
+            speaker_cal[i] = cal_frac_smooth[0, :, :2]
+
+            # plt.semilogx(f_centers, 20 * np.log10(np.abs(a0) / 20e-6).T, label="A0");
+            # plt.semilogx(f_centers, 20 * np.log10(np.abs(b0) / 20e-6).T, '--', label="B0")
+            # plt.semilogx(f_centers, 20 * np.log10(np.abs(a0 + b0) / 20e-6).T, ':', label="A0 + B0");
+            # plt.legend()
+            # plt.show()
+            # plt.semilogx(f_centers, np.abs(b0 / a0).T); plt.ylim(0, 2);
+            # plt.show()
+            # plt.semilogx(f_centers, 20 * np.log10(np.abs(p_cal[0].magnitude) / 20e-6).T);
+            # plt.semilogx(f_centers, 20 * np.log10(np.abs(fourier_ref) / 20e-6).T, '--');
+            # plt.show()
+
+        # FINALLLY: update the final output structure
+        speakers = [dm.SpeakerCalibration(id=i, frequency_range=tone.frequencies, cal=speaker_cal[i]) for i, tone in enumerate(self.calibration_speaker_tone_specs)]
+        self.calibration.speaker = speakers
 
     def calibrateAnalogMic(self):
         TRIAL_DURATION_S = 5
@@ -366,6 +407,11 @@ class Calibrate(BaseModel):
         print(self._tympan.read_all(1))
 
         return name
+
+    def save_calibration(self, path=None):
+        if path is None:
+            path = os.path.join(self.out_path, 'calibration.json')
+        self.calibration.save(path)
 
     ######## PLOT FUNCTIONS
     def plot_calibration_data(self, kwargs={}, figkwargs={}, show=True):
@@ -541,8 +587,8 @@ class Calibrate(BaseModel):
 
         real_c = ndimage.convolve1d(subdata, r_base[::-1], axis=-1)
         imag_c = ndimage.convolve1d(subdata, i_base[::-1], axis=-1)
-        mag_c = np.sqrt(real_c ** 2 + imag_c ** 2)  #[..., self.calibration_block_size // 2: self.calibration_block_size // 2 + self.calibration_block_size]
         # tube = 3
+        mag_c = np.sqrt(real_c ** 2 + imag_c ** 2)  #[..., self.calibration_block_size // 2: self.calibration_block_size // 2 + self.calibration_block_size]
         # t = np.arange(mag_c.shape[-1]) - mag_c.shape[-1] // 2
         # plt.plot(real_c[tube, 0])
         # plt.plot(imag_c[tube, 0])
@@ -689,16 +735,16 @@ class Calibrate(BaseModel):
 
         return amp_cal
 
-    def _combine_smooth_cal(self, f, rel_cal, abs_cal):
+    def _combine_smooth_cal(self, f, rel_cal, abs_cal, channels, smoothing_factor):
         n_channels = rel_cal.shape[1]
 
         phase = np.angle(rel_cal.T * abs_cal).T
         amp = np.abs(rel_cal)
 
-        mean_phase = np.angle(rel_cal[..., self.channels].mean(-1, keepdims=True))
-        phase[..., self.channels] -= mean_phase  # Phases are relative, so we say that the average phase is 0
-        mean_amp = np.abs(rel_cal[..., self.channels].mean(-1, keepdims=True))
-        amp[..., self.channels] -= mean_amp
+        mean_phase = np.nanmean(np.angle(rel_cal[..., channels]), -1, keepdims=True)
+        phase[..., channels] -= mean_phase  # Phases are relative, so we say that the average phase is 0
+        mean_amp = np.nanmean(np.abs(rel_cal[..., channels]), -1, keepdims=True)
+        amp[..., channels] -= mean_amp
 
         high_freq = max(self.calibration_mic_tone_specs.frequencies)
         low_freq = min(self.calibration_mic_tone_specs.frequencies)
@@ -714,21 +760,21 @@ class Calibrate(BaseModel):
         cal_abs_amp_bin = np.zeros((N - 1, n_channels))
         for i in range(f_center.size):
             I = (f >= f_bins[i]) & (f < f_bins[i + 1])
-            cal_phase_bin[i] = np.mean(phase[I], axis=0)
-            cal_amp_bin[i] = np.mean(amp[I], axis=0)
+            cal_phase_bin[i] = np.nanmean(phase[I], axis=0)
+            cal_amp_bin[i] = np.nanmean(amp[I], axis=0)
             # cal_phase_bin_mean[i] = np.mean(mean_phase[I], axis=0)
-            cal_amp_bin_mean[i] = np.mean(mean_amp[I], axis=0)
-            cal_abs_amp_bin[i] = np.mean(np.abs(abs_cal[I]), axis=0)
+            cal_amp_bin_mean[i] = np.nanmean(mean_amp[I], axis=0)
+            cal_abs_amp_bin[i] = np.nanmean(np.abs(abs_cal[I]), axis=0)
 
         # Add the mean back in
         cal_amp_bin += cal_amp_bin_mean
         # cal_phase_bin += cal_phase_bin_mean
 
         # Smooth the results
-        sigma = self.calibration_smoothing_sigma
+        sigma = smoothing_factor
         cal_phase_bin_smooth = ndimage.gaussian_filter1d(cal_phase_bin, sigma, mode="nearest", axis=0, truncate=2.5)
         cal_amp_bin_smooth = ndimage.gaussian_filter1d(cal_amp_bin, sigma, mode="nearest", axis=0, truncate=2.5)
-        sigma = self.calibration_smoothing_sigma / 2
+        sigma = smoothing_factor / 2
         cal_abs_amp_bin_max = ndimage.maximum_filter1d(cal_abs_amp_bin, self.bin_oversampling, axis=0)
         cal_abs_amp_bin_smooth = ndimage.gaussian_filter1d(
             cal_abs_amp_bin_max, sigma / 2, mode="nearest", axis=0, truncate=2.5

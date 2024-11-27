@@ -1,11 +1,13 @@
 """
 Data models for calibration structures
 """
+import json
 import typing as t
-from pydantic import BaseModel
-from numpydantic import NDArray, Shape
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+from numpydantic import NDArray, Shape
+from pydantic import BaseModel
 
 from owai.core import io
 from owai.core.data_models.calibration_geometry import TubeGeometry
@@ -215,6 +217,7 @@ class CalibrationData(BaseModel):
     mic: t.Optional[t.List[MicCalibration]] = None
     speaker: t.Optional[t.List[SpeakerCalibration]] = None
     description: str = ""
+    calibrated_channels: t.Optional[t.List[int]] = None
 
     _mic_cal_cache = None
 
@@ -267,7 +270,7 @@ class CalibrationData(BaseModel):
         fig, axs = plt.subplots(2, 2, sharex=True, sharey=False, **figkwargs)
         # Plot mic calibration
         if self.mic:
-            for i in range(4):
+            for i in self.calibrated_channels:
                 axs[0, 0].semilogx(self.mic[i].cal[:, 0] / 1000, todB(self.mic[i].cal[:, 1], ref=1), **kwargs, label=str(i))
                 axs[0, 1].semilogx(self.mic[i].cal[:, 0] / 1000, np.rad2deg(self.mic[i].cal[:, 2]), **kwargs, label=str(i))
             axs[0, 0].set_ylabel("Amplitude Cal (dB re 1)")
@@ -276,7 +279,7 @@ class CalibrationData(BaseModel):
             axs[0, 1].set_title("Mic Calibrations")
             axs[0, 1].legend()
         if self.speaker:
-            for i in range(2):
+            for i in range(len(self.speaker)):
                 axs[1, i].semilogx(self.speaker[i].cal[:, 0] / 1000, todB(self.speaker[i].cal[:, 1], ref=1), **kwargs)
                 axs[1, i].set_ylabel("Frac FS (dB re 1)")
                 axs[1, i].set_xlabel("Frequency (kHz)")
@@ -284,6 +287,10 @@ class CalibrationData(BaseModel):
 
         if show:
             plt.show()
+
+    def save(self, outpath):
+        with open(outpath, 'w', encoding='utf-8') as fid:
+            fid.write(self.model_dump_json())
 
 
 
