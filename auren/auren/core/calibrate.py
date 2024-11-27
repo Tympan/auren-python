@@ -34,7 +34,7 @@ class Calibrate(BaseModel):
     calibration_tone_db: float = -10  # dB FS
     speaker_output_db: float = 65  # dB SPL
 
-    calibration_block_size: int = 2048
+    calibration_block_size: int = 4096
     number_of_calibration_frequency_bins: int = 256
     bin_oversampling: int = 5
     calibration_smoothing_sigma: float = 9
@@ -44,7 +44,7 @@ class Calibrate(BaseModel):
 
     # Below this frequency, we don't calibrate. We just assume the phase and relative mic amplitudes match
     # This is implemented in _relative_calibration
-    noise_freq_threshold: float = 300
+    noise_freq_threshold: float = 100
 
     probe: dm.Probe = dm.Probe()
 
@@ -303,72 +303,9 @@ class Calibrate(BaseModel):
 
         # Step 8: Calibrate the speakers
         # Speaker
-        speaker_cal = np.zeros((len(self.calibration_speaker_tone_specs), self.number_of_calibration_frequency_bins, 2))
-        for i in range(2):
-            real_basis = self.calibration_speaker_tone_specs[i].get()
-            imag_basis = self.calibration_speaker_tone_specs[i].get(phi=np.pi / 2)
-            f_at_sample = self.calibration_speaker_tone_specs[i].get(return_freq=True)[2]
-
-            chnls = self.calibration_speaker_tone_specs[i].channels
-            real_basis[1] = real_basis[1][:, chnls]
-            imag_basis[1] = imag_basis[1][:, chnls]
-
-            n_samples = real_basis[0].shape[-1]
-            data_id = list(self.raw_data._tones_dict.keys()).index(self.calibration_speaker_tone_specs[i].id)
-            # Trim the data
-            trimmed_data, _ = self._trim_data(
-                self.raw_data.data[data_id],
-                real_basis,
-                imag_basis,
-                f_at_sample,
-                n_samples,
-                trim_freq=self.trim_frequency,
-            )
-            f_centers, fourier = self._fourier_transform_raw_data(
-                trimmed_data,
-                real_basis,
-                imag_basis,
-                f_at_sample,
-                n_samples,
-            )
-
-            p_cal = cal_obj.cal_p(f_centers, fourier) * auren.units("Pa")
-            mic1 = self.channels[0]
-            mic2 = self.channels[-1]
-            k = self._cavern_model.k(f_centers * auren.units("Hz"))
-            x_mic = self.probe.get_unit("mic_positions")
-            a0 = self._cavern_model.A_measured(
-                k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p_cal[..., mic1, :], p1=p_cal[..., mic2, :]
-            ).magnitude
-            b0 = self._cavern_model.B_measured(
-                k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p_cal[..., mic1, :], p1=p_cal[..., mic2, :]
-            ).magnitude
-
-            # Desired A0
-            db_cal_frac = 10 ** (self.calibration_tone_db / 20)
-            a0_desired_pa = 10 ** (self.speaker_output_db / 20) * 20e-6
-            # pa_desired = cal_frac * pa_actual / db_cal_frac
-            # cal_frac = pa_desired / pa_actual * db_cal_frac
-            cal_frac = a0_desired_pa / np.abs(a0) * db_cal_frac
-            cal_frac_smooth = self._combine_smooth_cal(
-                f_centers, cal_frac.T, cal_frac.squeeze() * 0 + 1 + 0j, [0], self.calibration_smoothing_sigma_speaker
-            )
-            speaker_cal[i] = cal_frac_smooth[0, :, :2]
-
-            # plt.semilogx(f_centers, 20 * np.log10(np.abs(a0) / 20e-6).T, label="A0");
-            # plt.semilogx(f_centers, 20 * np.log10(np.abs(b0) / 20e-6).T, '--', label="B0")
-            # plt.semilogx(f_centers, 20 * np.log10(np.abs(a0 + b0) / 20e-6).T, ':', label="A0 + B0");
-            # plt.legend()
-            # plt.show()
-            # plt.semilogx(f_centers, np.abs(b0 / a0).T); plt.ylim(0, 2);
-            # plt.show()
-            # plt.semilogx(f_centers, 20 * np.log10(np.abs(p_cal[0].magnitude) / 20e-6).T);
-            # plt.semilogx(f_centers, 20 * np.log10(np.abs(fourier_ref) / 20e-6).T, '--');
-            # plt.show()
-
-        # FINALLLY: update the final output structure
+        speaker_cal = self._calibrate_speakers()
         speakers = [
-            dm.SpeakerCalibration(id=i, frequency_range=tone.frequencies, cal=speaker_cal[i])
+            dm.SpeakerCalibration(id=i, frequency_range=tone.frequencies, cal=speaker_cal[i], calibrated_level=self.speaker_output_db)
             for i, tone in enumerate(self.calibration_speaker_tone_specs)
         ]
         self.calibration.speaker = speakers
@@ -579,6 +516,12 @@ class Calibrate(BaseModel):
         fig2, axs2 = plt.subplots(2, 2, sharex=True, **figkwargs)
         fig2.suptitle("Self-consistency Check of the Calibration with Ref Mic (Diff)")
 
+        fig3, axs3 = plt.subplots(2, 2, sharex=True, **figkwargs)
+        fig3.suptitle("Self-consistency Check of the Calibration (Reflectance)")
+
+        fig4, axs4 = plt.subplots(2, 2, sharex=True, **figkwargs)
+        fig4.suptitle("Self-consistency Check of the Calibration (Reflected/Fwd Amplitude)")
+
         for i in range(4):
             mic1 = self.channels[0]
             mic2 = self.channels[-1]
@@ -591,6 +534,17 @@ class Calibrate(BaseModel):
             p3_pred = self._cavern_model.p_measured(
                 self.fourier_freq * auren.units.Hz, x_ref_mic, x_mic[mic1], x_mic[mic2], p[tube, mic1], p[tube, mic2]
             )
+
+            k = self._cavern_model.k(self.fourier_freq * auren.units("Hz"))
+            a0 = self._cavern_model.A_measured(
+                k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p[tube, mic1, :], p1=p[tube, mic2, :]
+            ).magnitude
+            b0 = self._cavern_model.B_measured(
+                k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p[tube, mic1, :], p1=p[tube, mic2, :]
+            ).magnitude
+
+
+
             ii = i // 2
             jj = i % 2
             axs[ii, jj].semilogx(
@@ -620,6 +574,22 @@ class Calibrate(BaseModel):
             axs2[ii, jj].set_ylabel("Amplitude (dB SPL)")
             axs2[ii, jj].set_xlabel("Frequency (Hz)")
             axs2[ii, jj].set_title(f"Tube {i}")
+
+            axs3[ii, jj].semilogx(self.fourier_freq, np.abs(b0/a0) *0 + 1, 'k', lw=1)
+            axs3[ii, jj].semilogx(self.fourier_freq, np.abs(b0/a0), lw=3)
+            axs3[ii, jj].set_ylabel("Reflectance")
+            axs3[ii, jj].set_xlabel("Frequency (Hz)")
+            axs3[ii, jj].set_ylim(-0.5, 1.5)
+            axs3[ii, jj].grid()
+            axs3[ii, jj].set_title(f"Tube {i}")
+
+            axs4[ii, jj].semilogx(self.fourier_freq, todB(a0), label='Forward')
+            axs4[ii, jj].semilogx(self.fourier_freq, todB(b0), label='Reflected')
+            axs4[ii, jj].set_ylabel("Amplitude (dB SPL)")
+            axs4[ii, jj].set_xlabel("Frequency (Hz)")
+            axs4[ii, jj].legend()
+            axs4[ii, jj].grid()
+            axs4[ii, jj].set_title(f"Tube {i}")
 
         if show:
             plt.show()
@@ -857,3 +827,72 @@ class Calibrate(BaseModel):
         # cal[..., 2] = np.angle(rel_cal.T * abs_cal)
 
         return cal
+
+    def _calibrate_speakers(self, calibration=None):
+        if calibration is None:
+            calibration = self.calibration
+        speaker_cal = np.zeros((len(self.calibration_speaker_tone_specs), self.number_of_calibration_frequency_bins, 2))
+        for i in range(2):
+            real_basis = self.calibration_speaker_tone_specs[i].get()
+            imag_basis = self.calibration_speaker_tone_specs[i].get(phi=np.pi / 2)
+            f_at_sample = self.calibration_speaker_tone_specs[i].get(return_freq=True)[2]
+
+            chnls = self.calibration_speaker_tone_specs[i].channels
+            real_basis[1] = real_basis[1][:, chnls]
+            imag_basis[1] = imag_basis[1][:, chnls]
+
+            n_samples = real_basis[0].shape[-1]
+            data_id = list(self.raw_data._tones_dict.keys()).index(self.calibration_speaker_tone_specs[i].id)
+            # Trim the data
+            trimmed_data, _ = self._trim_data(
+                self.raw_data.data[data_id],
+                real_basis,
+                imag_basis,
+                f_at_sample,
+                n_samples,
+                trim_freq=self.trim_frequency,
+            )
+            f_centers, fourier = self._fourier_transform_raw_data(
+                trimmed_data,
+                real_basis,
+                imag_basis,
+                f_at_sample,
+                n_samples,
+            )
+
+            p_cal = calibration.cal_p(f_centers, fourier) * auren.units("Pa")
+            mic1 = self.channels[0]
+            mic2 = self.channels[-1]
+            k = self._cavern_model.k(f_centers * auren.units("Hz"))
+            x_mic = self.probe.get_unit("mic_positions")
+            a0 = self._cavern_model.A_measured(
+                k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p_cal[..., mic1, :], p1=p_cal[..., mic2, :]
+            ).magnitude
+            b0 = self._cavern_model.B_measured(
+                k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p_cal[..., mic1, :], p1=p_cal[..., mic2, :]
+            ).magnitude
+
+            # Desired A0
+            db_cal_frac = 10 ** (self.calibration_tone_db / 20)
+            a0_desired_pa = 10 ** (self.speaker_output_db / 20) * 20e-6
+            # pa_desired = cal_frac * pa_actual / db_cal_frac
+            # cal_frac = pa_desired / pa_actual * db_cal_frac
+            cal_frac = a0_desired_pa / np.abs(a0) * db_cal_frac
+            cal_frac_smooth = self._combine_smooth_cal(
+                f_centers, cal_frac.T, cal_frac.squeeze() * 0 + 1 + 0j, [0], self.calibration_smoothing_sigma_speaker
+            )
+            speaker_cal[i] = cal_frac_smooth[0, :, :2]
+
+            # plt.semilogx(f_centers, 20 * np.log10(np.abs(a0) / 20e-6).T, label="A0");
+            # plt.semilogx(f_centers, 20 * np.log10(np.abs(b0) / 20e-6).T, '--', label="B0")
+            # plt.semilogx(f_centers, 20 * np.log10(np.abs(a0 + b0) / 20e-6).T, ':', label="A0 + B0");
+            # plt.legend()
+            # plt.show()
+            # plt.semilogx(f_centers, np.abs(b0 / a0).T); plt.ylim(0, 2);
+            # plt.show()
+            # plt.semilogx(f_centers, 20 * np.log10(np.abs(p_cal[0].magnitude) / 20e-6).T);
+            # plt.semilogx(f_centers, 20 * np.log10(np.abs(fourier_ref) / 20e-6).T, '--');
+            # plt.show()
+
+        return speaker_cal
+

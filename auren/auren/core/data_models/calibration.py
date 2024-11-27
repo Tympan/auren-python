@@ -211,6 +211,8 @@ class SpeakerCalibration(BaseModel):
     description: str = "RAB-34832-b148"
     frequency_range: t.List[float] = [100, 20000]
     cal: t.Optional[NDArray[Shape["* data, 2 freqFrac"], float]] = None
+    calibrated_level: float = 65
+    calibrated_level_units: str = "dB SPL"
 
 
 class CalibrationData(BaseModel):
