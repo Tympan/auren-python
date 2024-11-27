@@ -283,7 +283,7 @@ def make_chirp(
     # See https://en.wikipedia.org/wiki/Chirp#Exponential
     freq = f0 * (pow(f1 / f0, (times / t1)))
     beta = t1 / np.log(f1 / f0)
-    phase = 2 * np.pi * beta * (freq - f0) + phi # -f0 is a phase shift because scipy uses cos and wikipedia uses sin
+    phase = 2 * np.pi * beta * (freq - f0) + phi  # -f0 is a phase shift because scipy uses cos and wikipedia uses sin
     signal = amplitude_func(freq) * np.cos(phase)
     if not (return_freq or return_phase):
         return signal

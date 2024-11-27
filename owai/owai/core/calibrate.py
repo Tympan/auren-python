@@ -240,7 +240,9 @@ class Calibrate(BaseModel):
         # Step 2: Fourier transform the raw data
         data_id = list(self.raw_data._tones_dict.keys()).index(self.calibration_mic_tone_specs.id)
         # Trim the data
-        self.trimmed_data, self.trim_slices = self._trim_data(self.raw_data.data[data_id], real_basis, imag_basis, f_at_sample, n_samples, trim_freq=self.trim_frequency)
+        self.trimmed_data, self.trim_slices = self._trim_data(
+            self.raw_data.data[data_id], real_basis, imag_basis, f_at_sample, n_samples, trim_freq=self.trim_frequency
+        )
         f_centers, fourier = self._fourier_transform_raw_data(
             self.trimmed_data,
             real_basis,
@@ -314,7 +316,14 @@ class Calibrate(BaseModel):
             n_samples = real_basis[0].shape[-1]
             data_id = list(self.raw_data._tones_dict.keys()).index(self.calibration_speaker_tone_specs[i].id)
             # Trim the data
-            trimmed_data, _ = self._trim_data(self.raw_data.data[data_id], real_basis, imag_basis, f_at_sample, n_samples, trim_freq=self.trim_frequency)
+            trimmed_data, _ = self._trim_data(
+                self.raw_data.data[data_id],
+                real_basis,
+                imag_basis,
+                f_at_sample,
+                n_samples,
+                trim_freq=self.trim_frequency,
+            )
             f_centers, fourier = self._fourier_transform_raw_data(
                 trimmed_data,
                 real_basis,
@@ -337,11 +346,13 @@ class Calibrate(BaseModel):
 
             # Desired A0
             db_cal_frac = 10 ** (self.calibration_tone_db / 20)
-            a0_desired_pa = 10**(self.speaker_output_db / 20) * 20e-6
+            a0_desired_pa = 10 ** (self.speaker_output_db / 20) * 20e-6
             # pa_desired = cal_frac * pa_actual / db_cal_frac
             # cal_frac = pa_desired / pa_actual * db_cal_frac
             cal_frac = a0_desired_pa / np.abs(a0) * db_cal_frac
-            cal_frac_smooth = self._combine_smooth_cal(f_centers, cal_frac.T, cal_frac.squeeze() * 0 + 1 + 0j, [0], self.calibration_smoothing_sigma_speaker)
+            cal_frac_smooth = self._combine_smooth_cal(
+                f_centers, cal_frac.T, cal_frac.squeeze() * 0 + 1 + 0j, [0], self.calibration_smoothing_sigma_speaker
+            )
             speaker_cal[i] = cal_frac_smooth[0, :, :2]
 
             # plt.semilogx(f_centers, 20 * np.log10(np.abs(a0) / 20e-6).T, label="A0");
@@ -356,7 +367,10 @@ class Calibrate(BaseModel):
             # plt.show()
 
         # FINALLLY: update the final output structure
-        speakers = [dm.SpeakerCalibration(id=i, frequency_range=tone.frequencies, cal=speaker_cal[i]) for i, tone in enumerate(self.calibration_speaker_tone_specs)]
+        speakers = [
+            dm.SpeakerCalibration(id=i, frequency_range=tone.frequencies, cal=speaker_cal[i])
+            for i, tone in enumerate(self.calibration_speaker_tone_specs)
+        ]
         self.calibration.speaker = speakers
 
     def calibrateAnalogMic(self):
@@ -410,7 +424,7 @@ class Calibrate(BaseModel):
 
     def save_calibration(self, path=None):
         if path is None:
-            path = os.path.join(self.out_path, 'calibration.json')
+            path = os.path.join(self.out_path, "calibration.json")
         self.calibration.save(path)
 
     ######## PLOT FUNCTIONS
@@ -431,7 +445,9 @@ class Calibrate(BaseModel):
         classic_fourier = classic_fourier[..., (classic_bins >= tone_freqs[0]) & (classic_bins <= tone_freqs[-1])]
         classic_bins = classic_bins[(classic_bins >= tone_freqs[0]) & (classic_bins <= tone_freqs[-1])]
 
-        classic_fourier_ref = classic_fourier_ref[..., (classic_bins_ref >= tone_freqs[0]) & (classic_bins_ref <= tone_freqs[-1])]
+        classic_fourier_ref = classic_fourier_ref[
+            ..., (classic_bins_ref >= tone_freqs[0]) & (classic_bins_ref <= tone_freqs[-1])
+        ]
         classic_bins_ref = classic_bins_ref[(classic_bins_ref >= tone_freqs[0]) & (classic_bins_ref <= tone_freqs[-1])]
 
         classic_fourier_scale = (
@@ -454,14 +470,23 @@ class Calibrate(BaseModel):
         for i in range(4):
             ii = i // 2
             jj = i % 2
-            axs[ii, jj].semilogx(self.fourier_freq / 1000, todB(self.fourier_ref[i]).T, 'k', lw=2, **kwargs)
+            axs[ii, jj].semilogx(self.fourier_freq / 1000, todB(self.fourier_ref[i]).T, "k", lw=2, **kwargs)
             axs[ii, jj].semilogx(self.fourier_freq / 1000, todB(self.fourier[i, self.channels]).T, lw=2, **kwargs)
             axs[ii, jj].set_prop_cycle(None)
             axs[ii, jj].semilogx(
-                classic_bins / 1000, todB(classic_fourier[i, self.channels] * classic_fourier_scale).T, alpha=0.5, lw=4, **kwargs
+                classic_bins / 1000,
+                todB(classic_fourier[i, self.channels] * classic_fourier_scale).T,
+                alpha=0.5,
+                lw=4,
+                **kwargs,
             )
             axs[ii, jj].semilogx(
-                classic_bins_ref / 1000, todB(classic_fourier_ref[i] * classic_fourier_scale).T, 'k', alpha=0.5, lw=4, **kwargs
+                classic_bins_ref / 1000,
+                todB(classic_fourier_ref[i] * classic_fourier_scale).T,
+                "k",
+                alpha=0.5,
+                lw=4,
+                **kwargs,
             )
             axs[ii, jj].set_title(f"Tube {i}")
         axs[0, 0].legend(["Ref Mic"] + self.channels)
@@ -483,7 +508,11 @@ class Calibrate(BaseModel):
             ii = i // 2
             jj = i % 2
             axs[ii, jj].semilogx(self.fourier_freq / 1000, expected_phase * 0, "k", alpha=0.4, **kwargs)
-            axs[ii, jj].semilogx(self.fourier_freq / 1000, np.rad2deg(np.angle(self.fourier[i, self.channels]) - expected_phase * 0).T, **kwargs)
+            axs[ii, jj].semilogx(
+                self.fourier_freq / 1000,
+                np.rad2deg(np.angle(self.fourier[i, self.channels]) - expected_phase * 0).T,
+                **kwargs,
+            )
             # axs[ii, jj].semilogx(
             # classic_bins / 1000, np.angle(classic_fourier[i] * classic_fourier_scale).T, alpha=0.5, lw=4, **kwargs)
             # axs[ii, jj].semilogx(self.fourier_freq / 1000, expected_phase, 'k', alpha=0.4, **kwargs)
@@ -499,7 +528,16 @@ class Calibrate(BaseModel):
         axs[0].set_xlabel("Frequency(kHz)")
         axs[0].set_ylabel("Amplitude (dB SPL uncal)")
         axs[0].set_title("Relative Calibration")
-        axs[1].semilogx(self.fourier_freq / 1000, np.rad2deg(np.angle(self.rel_cal[..., self.channels] / self.rel_cal[..., self.channels[:1]] * np.abs(self.rel_cal[..., self.channels[:1]]))))
+        axs[1].semilogx(
+            self.fourier_freq / 1000,
+            np.rad2deg(
+                np.angle(
+                    self.rel_cal[..., self.channels]
+                    / self.rel_cal[..., self.channels[:1]]
+                    * np.abs(self.rel_cal[..., self.channels[:1]])
+                )
+            ),
+        )
         axs[1].set_xlabel("Frequency(kHz)")
         axs[1].set_ylabel("Phase (°)")
         axs[2].semilogx(self.fourier_freq / 1000, todB(self.abs_cal))
@@ -522,14 +560,16 @@ class Calibrate(BaseModel):
 
         fig, axs = plt.subplots(2, 1, sharex=True, **figkwargs)
         fig.suptitle("Self-consistency Check of the Calibration")
-        axs[0].semilogx(self.fourier_freq, todB(p3_pred), 'C0', lw=4, alpha=0.5, label="Predicted from Mics %s, %s" % (mic1, mic2))
-        axs[0].semilogx(self.fourier_freq, todB(p[tube, mic_ref]), 'C1', lw=2, label="Measured, Mic %d" % mic_ref)
+        axs[0].semilogx(
+            self.fourier_freq, todB(p3_pred), "C0", lw=4, alpha=0.5, label="Predicted from Mics %s, %s" % (mic1, mic2)
+        )
+        axs[0].semilogx(self.fourier_freq, todB(p[tube, mic_ref]), "C1", lw=2, label="Measured, Mic %d" % mic_ref)
         axs[0].legend()
         axs[0].set_ylabel("Amplitude (dB SPL)")
-        axs[0].set_xlabel('Frequency (Hz)')
-        axs[1].semilogx(self.fourier_freq, todB(p[tube, mic_ref]) - todB(p3_pred), 'C2', lw=3)
+        axs[0].set_xlabel("Frequency (Hz)")
+        axs[1].semilogx(self.fourier_freq, todB(p[tube, mic_ref]) - todB(p3_pred), "C2", lw=3)
         axs[1].set_ylabel("Reference - Prediction (Difference of dB)")
-        axs[1].set_xlabel('Frequency (Hz)')
+        axs[1].set_xlabel("Frequency (Hz)")
         axs[1].set_ylim(-10, 10)
         axs[1].grid()
 
@@ -553,21 +593,32 @@ class Calibrate(BaseModel):
             )
             ii = i // 2
             jj = i % 2
-            axs[ii, jj].semilogx(self.fourier_freq, todB(p[tube, mic1]), 'C2', lw=1, label=f"Measured, Mic {mic1}", alpha=0.4)
-            axs[ii, jj].semilogx(self.fourier_freq, todB(p[tube, mic2]), 'C3', lw=1, label=f"Measured, Mic {mic2}", alpha=0.4)
-            axs[ii, jj].semilogx(self.fourier_freq, todB(p3_pred), 'C0', lw=4, alpha=0.5, label="Predicted from Mics %s, %s" % (mic1, mic2))
-            axs[ii, jj].semilogx(self.fourier_freq, todB(self.fourier_ref[tube]), 'C1', lw=2, label="Measured, Ref Mic")
+            axs[ii, jj].semilogx(
+                self.fourier_freq, todB(p[tube, mic1]), "C2", lw=1, label=f"Measured, Mic {mic1}", alpha=0.4
+            )
+            axs[ii, jj].semilogx(
+                self.fourier_freq, todB(p[tube, mic2]), "C3", lw=1, label=f"Measured, Mic {mic2}", alpha=0.4
+            )
+            axs[ii, jj].semilogx(
+                self.fourier_freq,
+                todB(p3_pred),
+                "C0",
+                lw=4,
+                alpha=0.5,
+                label="Predicted from Mics %s, %s" % (mic1, mic2),
+            )
+            axs[ii, jj].semilogx(self.fourier_freq, todB(self.fourier_ref[tube]), "C1", lw=2, label="Measured, Ref Mic")
             axs[ii, jj].legend()
             axs[ii, jj].set_ylabel("Amplitude (dB SPL)")
-            axs[ii, jj].set_xlabel('Frequency (Hz)')
+            axs[ii, jj].set_xlabel("Frequency (Hz)")
             axs[ii, jj].set_title(f"Tube {i}")
-            axs2[ii, jj].semilogx(self.fourier_freq, todB(self.fourier_ref[tube]) - todB(p3_pred), 'C2', lw=3)
+            axs2[ii, jj].semilogx(self.fourier_freq, todB(self.fourier_ref[tube]) - todB(p3_pred), "C2", lw=3)
             axs2[ii, jj].set_ylabel("Reference - Prediction (Difference of dB)")
-            axs2[ii, jj].set_xlabel('Frequency (Hz)')
+            axs2[ii, jj].set_xlabel("Frequency (Hz)")
             axs2[ii, jj].set_ylim(-10, 10)
             axs2[ii, jj].grid()
             axs2[ii, jj].set_ylabel("Amplitude (dB SPL)")
-            axs2[ii, jj].set_xlabel('Frequency (Hz)')
+            axs2[ii, jj].set_xlabel("Frequency (Hz)")
             axs2[ii, jj].set_title(f"Tube {i}")
 
         if show:
@@ -579,7 +630,10 @@ class Calibrate(BaseModel):
         i = np.argmin(np.abs(f_at_sample - trim_freq))
         sym_pad = (data.shape[-1] - real_basis[1].shape[0]) // 2
 
-        sub_slice = slice(i - int(self.calibration_block_size * 1.5) + sym_pad, i + int(self.calibration_block_size * 1.5) + 1 + sym_pad)
+        sub_slice = slice(
+            i - int(self.calibration_block_size * 1.5) + sym_pad,
+            i + int(self.calibration_block_size * 1.5) + 1 + sym_pad,
+        )
         sub_slice2 = slice(i - self.calibration_block_size // 2, i + self.calibration_block_size // 2 + 1)
         subdata = data[..., sub_slice]
         r_base = real_basis[1][sub_slice2, 0]
@@ -588,7 +642,9 @@ class Calibrate(BaseModel):
         real_c = ndimage.convolve1d(subdata, r_base[::-1], axis=-1)
         imag_c = ndimage.convolve1d(subdata, i_base[::-1], axis=-1)
         # tube = 3
-        mag_c = np.sqrt(real_c ** 2 + imag_c ** 2)  #[..., self.calibration_block_size // 2: self.calibration_block_size // 2 + self.calibration_block_size]
+        mag_c = np.sqrt(
+            real_c ** 2 + imag_c ** 2
+        )  # [..., self.calibration_block_size // 2: self.calibration_block_size // 2 + self.calibration_block_size]
         # t = np.arange(mag_c.shape[-1]) - mag_c.shape[-1] // 2
         # plt.plot(real_c[tube, 0])
         # plt.plot(imag_c[tube, 0])
@@ -647,7 +703,7 @@ class Calibrate(BaseModel):
                 real = np.convolve(data_ref[i], real_block[::-1], "same")
                 imag = np.convolve(data_ref[i], imag_block[::-1], "same")
                 # ind = np.argmax(real - np.abs(imag))  # 0 phase mean 0 imaginary part, max amplitude on real
-                ind = max([n_samples, np.argmax(real**2 + imag ** 2)])  # max amplitude agreement
+                ind = max([n_samples, np.argmax(real ** 2 + imag ** 2)])  # max amplitude agreement
                 raw_clipped.append(data_ref[i, ind - n_samples : ind])
             raw_clipped = np.stack(raw_clipped, axis=0)
         else:

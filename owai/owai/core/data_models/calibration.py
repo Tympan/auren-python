@@ -181,12 +181,12 @@ class RawCalibrationData(BaseModel):
             for row in range(rows):
                 for col in range(cols - has_ref):
                     axs[row, col].specgram(data[row, col], **kwargs)
-                    axs[row, col].plot(times + tone_time_offset, expected_freq, 'r:', alpha=0.5)
+                    axs[row, col].plot(times + tone_time_offset, expected_freq, "r:", alpha=0.5)
                     axs[rows - 1, col].set_xlabel("Channel {} (s)".format(col))
                 axs[row, 0].set_ylabel("Tube {} (Hz)".format(row))
                 if has_ref:
                     axs[row, cols - 1].specgram(data_ref[row, 0], **kwargs)
-                    axs[row, col].plot(times + tone_time_offset, expected_freq, 'r:', alpha=0.5)
+                    axs[row, col].plot(times + tone_time_offset, expected_freq, "r:", alpha=0.5)
                     axs[rows - 1, cols - 1].set_xlabel("Ref Mic")
             axs[0, 0].set_ylim(ymin, ymax)
 
@@ -266,13 +266,16 @@ class CalibrationData(BaseModel):
         if figkwargs is None:
             figkwargs = {}
 
-
         fig, axs = plt.subplots(2, 2, sharex=True, sharey=False, **figkwargs)
         # Plot mic calibration
         if self.mic:
             for i in self.calibrated_channels:
-                axs[0, 0].semilogx(self.mic[i].cal[:, 0] / 1000, todB(self.mic[i].cal[:, 1], ref=1), **kwargs, label=str(i))
-                axs[0, 1].semilogx(self.mic[i].cal[:, 0] / 1000, np.rad2deg(self.mic[i].cal[:, 2]), **kwargs, label=str(i))
+                axs[0, 0].semilogx(
+                    self.mic[i].cal[:, 0] / 1000, todB(self.mic[i].cal[:, 1], ref=1), **kwargs, label=str(i)
+                )
+                axs[0, 1].semilogx(
+                    self.mic[i].cal[:, 0] / 1000, np.rad2deg(self.mic[i].cal[:, 2]), **kwargs, label=str(i)
+                )
             axs[0, 0].set_ylabel("Amplitude Cal (dB re 1)")
             axs[0, 1].set_ylabel("Phase Cal (°)")
             axs[0, 0].set_title("Mic Calibrations")
@@ -289,8 +292,5 @@ class CalibrationData(BaseModel):
             plt.show()
 
     def save(self, outpath):
-        with open(outpath, 'w', encoding='utf-8') as fid:
+        with open(outpath, "w", encoding="utf-8") as fid:
             fid.write(self.model_dump_json())
-
-
-
