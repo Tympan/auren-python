@@ -1,7 +1,7 @@
 from hashlib import md5
 import numpy as np
 
-import owai
+import auren
 
 hash = md5
 
@@ -14,7 +14,7 @@ class IDMixin:
 
 class GetUnitsMixin:
     def get_unit(self, attr, units_attr="units"):
-        return getattr(self, attr) * owai.units(getattr(self, units_attr))
+        return getattr(self, attr) * auren.units(getattr(self, units_attr))
 
 
 def todB(val, ref=20e-6):

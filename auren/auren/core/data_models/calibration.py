@@ -9,10 +9,10 @@ import numpy as np
 from numpydantic import NDArray, Shape
 from pydantic import BaseModel
 
-from owai.core import io
-from owai.core.data_models.calibration_geometry import TubeGeometry
-from owai.core.data_models.chirp import Chirp
-from owai.core.utils import todB
+from auren.core import io
+from auren.core.data_models.calibration_geometry import TubeGeometry
+from auren.core.data_models.chirp import Chirp
+from auren.core.utils import todB
 
 
 class RawData(BaseModel):
@@ -282,11 +282,17 @@ class CalibrationData(BaseModel):
             axs[0, 1].set_title("Mic Calibrations")
             axs[0, 1].legend()
         if self.speaker:
+            ylim_min = 0
             for i in range(len(self.speaker)):
                 axs[1, i].semilogx(self.speaker[i].cal[:, 0] / 1000, todB(self.speaker[i].cal[:, 1], ref=1), **kwargs)
                 axs[1, i].set_ylabel("Frac FS (dB re 1)")
                 axs[1, i].set_xlabel("Frequency (kHz)")
                 axs[1, i].set_title(f"Speaker {i} Calibration")
+                ylim_min = min(ylim_min, np.nanmin(todB(self.speaker[i].cal[:, 1], ref=1)))
+            for i in range(len(self.speaker)):
+                axs[1, i].set_ylim(ylim_min, 0)
+
+        fig.tight_layout()
 
         if show:
             plt.show()

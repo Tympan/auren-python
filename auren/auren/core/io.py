@@ -12,7 +12,7 @@ import soundfile
 import numpy as np
 
 
-from owai.core.signal_processing_utils import to_fourier
+from auren.core.signal_processing_utils import to_fourier
 
 
 def load_test_data(filename: str) -> dict:

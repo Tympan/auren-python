@@ -5,8 +5,8 @@ import typing as t
 from pydantic import BaseModel
 import numpy as np
 
-from owai.core.utils import IDMixin, GetUnitsMixin
-from owai.core.signal_processing_utils import make_multi_chirp
+from auren.core.utils import IDMixin, GetUnitsMixin
+from auren.core.signal_processing_utils import make_multi_chirp
 
 
 class Chirp(IDMixin, GetUnitsMixin, BaseModel):

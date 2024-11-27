@@ -8,12 +8,12 @@ from numpydantic import NDArray, Shape
 from pydantic import BaseModel
 from scipy import ndimage
 
-import owai
-import owai.core.data_models as dm
-from owai.core import io, model
-from owai.core.signal_processing_utils import dft_known_basis, pad_chirp, to_fourier
-from owai.core.tympan_serial import TympanSerial
-from owai.core.utils import todB
+import auren
+import auren.core.data_models as dm
+from auren.core import io, model
+from auren.core.signal_processing_utils import dft_known_basis, pad_chirp, to_fourier
+from auren.core.tympan_serial import TympanSerial
+from auren.core.utils import todB
 
 
 class Calibrate(BaseModel):
@@ -286,7 +286,7 @@ class Calibrate(BaseModel):
         cal_obj = dm.CalibrationData(mic=mics, calibrated_channels=self.channels)
 
         # Calibrate the pressure for the calibration data (to do self-consistency test)
-        p_cal = cal_obj.cal_p(f_centers, fourier) * owai.units("Pa")
+        p_cal = cal_obj.cal_p(f_centers, fourier) * auren.units("Pa")
 
         # Save ALL the calibration information up to this point
         self.calibration = cal_obj
@@ -332,10 +332,10 @@ class Calibrate(BaseModel):
                 n_samples,
             )
 
-            p_cal = cal_obj.cal_p(f_centers, fourier) * owai.units("Pa")
+            p_cal = cal_obj.cal_p(f_centers, fourier) * auren.units("Pa")
             mic1 = self.channels[0]
             mic2 = self.channels[-1]
-            k = self._cavern_model.k(f_centers * owai.units("Hz"))
+            k = self._cavern_model.k(f_centers * auren.units("Hz"))
             x_mic = self.probe.get_unit("mic_positions")
             a0 = self._cavern_model.A_measured(
                 k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p_cal[..., mic1, :], p1=p_cal[..., mic2, :]
@@ -555,7 +555,7 @@ class Calibrate(BaseModel):
         x_mic = self.probe.get_unit("mic_positions")
         p = self.calibration.cal_p(self.fourier_freq, self.fourier)
         p3_pred = self._cavern_model.p_measured(
-            self.fourier_freq * owai.units.Hz, x_mic[mic_ref], x_mic[mic1], x_mic[mic2], p[tube, mic1], p[tube, mic2]
+            self.fourier_freq * auren.units.Hz, x_mic[mic_ref], x_mic[mic1], x_mic[mic2], p[tube, mic1], p[tube, mic2]
         )
 
         fig, axs = plt.subplots(2, 1, sharex=True, **figkwargs)
@@ -589,7 +589,7 @@ class Calibrate(BaseModel):
             x_ref_mic = tube_obj.get_unit("probe_locations")[0]
             p = self.calibration.cal_p(self.fourier_freq, self.fourier)
             p3_pred = self._cavern_model.p_measured(
-                self.fourier_freq * owai.units.Hz, x_ref_mic, x_mic[mic1], x_mic[mic2], p[tube, mic1], p[tube, mic2]
+                self.fourier_freq * auren.units.Hz, x_ref_mic, x_mic[mic1], x_mic[mic2], p[tube, mic1], p[tube, mic2]
             )
             ii = i // 2
             jj = i % 2

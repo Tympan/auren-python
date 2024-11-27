@@ -3,7 +3,7 @@
 import typing as t
 from pydantic import BaseModel
 
-from owai.core.utils import GetUnitsMixin, IDMixin
+from auren.core.utils import GetUnitsMixin, IDMixin
 
 
 class Probe(IDMixin, GetUnitsMixin, BaseModel):

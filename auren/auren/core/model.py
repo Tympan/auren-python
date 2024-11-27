@@ -5,7 +5,7 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 import ipywidgets
-from owai.core.units import units
+from auren.core.units import units
 
 
 class Model:

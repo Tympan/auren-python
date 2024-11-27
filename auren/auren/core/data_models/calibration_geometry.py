@@ -4,7 +4,7 @@ Data model for probe geometry
 import typing as t
 from pydantic import BaseModel
 
-from owai.core.utils import IDMixin, GetUnitsMixin
+from auren.core.utils import IDMixin, GetUnitsMixin
 
 
 class TubeGeometry(IDMixin, GetUnitsMixin, BaseModel):

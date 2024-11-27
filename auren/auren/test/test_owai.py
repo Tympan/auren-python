@@ -1,5 +1,5 @@
 import pytest
-from owai.owai import function, Class
+from auren.auren import function, Class
 
 
 class TestOWAIFunction(object):

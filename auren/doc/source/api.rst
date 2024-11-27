@@ -5,7 +5,7 @@ API Reference
 
 .. note this must be manually updated to refer to new/changed module names
 
-.. currentmodule:: owai
+.. currentmodule:: auren
 
 
 Top Level Imports
@@ -15,8 +15,8 @@ Top Level Imports
    :toctree: api/
    :template: class.rst
 
-   owai
+   auren
 
-.. automodule:: owai
+.. automodule:: auren
    :members:
 

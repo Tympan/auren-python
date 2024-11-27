@@ -39,17 +39,17 @@ copyright = "2020-{}, Creare".format(datetime.datetime.now().year)
 author = "Creare"
 
 # import podpac for versioning
-import owai.version
+import auren.version
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #
 # The short X.Y version.
-version = owai.version.semver()
+version = auren.version.semver()
 
 # The full version, including alpha/beta/rc tags.
-release = owai.version.version()
+release = auren.version.version()
 
 # -- General configuration ---------------------------------------------------
 

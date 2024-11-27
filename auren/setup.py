@@ -10,7 +10,7 @@ from setuptools import find_packages, setup
 from setuptools.command.develop import develop
 
 # Get version information
-sys.path.insert(0, "owai")  # Directory where actual code lives
+sys.path.insert(0, "auren")  # Directory where actual code lives
 import version
 
 __version__ = version.version()
@@ -76,7 +76,7 @@ class PostDevelopCommand(develop):
 
 setup(
     # ext_modules=None,
-    name="OWAI",
+    name="auren",
     version=__version__,
     description="short-project-description",
     author="Creare",
