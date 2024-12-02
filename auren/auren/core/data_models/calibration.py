@@ -248,13 +248,17 @@ class CalibrationData(BaseModel):
         level : float
             Desired level in dB SPL
         """
+        # Desired Pa
         pa = 10 ** (level / 20) * (20e-6)
         amplitude = []
         for speaker in self.speaker:
+            # Calibrated Pa
+            cal_pa = 10 ** (speaker.calibrated_level / 20) * (20e-6)
+            factor = pa / cal_pa
 
             def make_func(speaker):
                 def amp(f):
-                    amplitude = pa / np.interp(f, speaker.cal[:, 0], speaker.cal[:, 1])
+                    amplitude = factor * np.interp(f, speaker.cal[:, 0], speaker.cal[:, 1])
                     return amplitude
 
                 return amp

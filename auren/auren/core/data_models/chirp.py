@@ -42,5 +42,6 @@ class Chirp(IDMixin, GetUnitsMixin, BaseModel):
         )
         r = list(r)
         # Expand the chirp to multiple channels
-        r[1] = r[1][:, None] * np.array(self.channels)[None, :]
+        if self.channels is not None:
+            r[1] = r[1][:, None] * np.array(self.channels)[None, :]
         return r

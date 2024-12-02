@@ -460,8 +460,10 @@ class Calibrate(BaseModel):
         # plt.show()
         # Plot the relative calibration -- before smoothing
         fig, axs = plt.subplots(3, 1, sharex=True, sharey=False, **figkwargs)
-        fig.suptitle("Relative + Absolute Calibration")
+        fig.suptitle("Relative + Absolute Calibration (pre-smoothing)")
         axs[0].semilogx(self.fourier_freq / 1000, todB(self.rel_cal[..., self.channels]))
+        ylims = axs[0].get_ylim()
+        axs[0].semilogx([self.noise_freq_threshold / 1000] * 2, ylims, 'k', lw=5, alpha=0.3)
         axs[0].set_xlabel("Frequency(kHz)")
         axs[0].set_ylabel("Amplitude (dB SPL uncal)")
         axs[0].set_title("Relative Calibration")
@@ -475,12 +477,16 @@ class Calibrate(BaseModel):
                 )
             ),
         )
+        ylims = axs[1].get_ylim()
+        axs[1].semilogx([self.noise_freq_threshold / 1000] * 2, ylims, 'k', lw=5, alpha=0.3)
         axs[1].set_xlabel("Frequency(kHz)")
         axs[1].set_ylabel("Phase (°)")
         axs[2].semilogx(self.fourier_freq / 1000, todB(self.abs_cal))
         axs[2].set_xlabel("Frequency(kHz)")
         axs[2].set_ylabel("Amplitude (dB SPL)")
         axs[2].set_title("Absolute Calibration")
+        ylims = axs[2].get_ylim()
+        axs[2].semilogx([self.noise_freq_threshold / 1000] * 2, ylims, 'k', lw=5, alpha=0.3)
         fig.tight_layout()
         # plt.show()
 
@@ -547,6 +553,8 @@ class Calibrate(BaseModel):
 
             ii = i // 2
             jj = i % 2
+
+            # Self-consistency with mic
             axs[ii, jj].semilogx(
                 self.fourier_freq, todB(p[tube, mic1]), "C2", lw=1, label=f"Measured, Mic {mic1}", alpha=0.4
             )
@@ -566,6 +574,8 @@ class Calibrate(BaseModel):
             axs[ii, jj].set_ylabel("Amplitude (dB SPL)")
             axs[ii, jj].set_xlabel("Frequency (Hz)")
             axs[ii, jj].set_title(f"Tube {i}")
+
+            # Self-consistency with mic (difference)
             axs2[ii, jj].semilogx(self.fourier_freq, todB(self.fourier_ref[tube]) - todB(p3_pred), "C2", lw=3)
             axs2[ii, jj].set_ylabel("Reference - Prediction (Difference of dB)")
             axs2[ii, jj].set_xlabel("Frequency (Hz)")
@@ -575,7 +585,9 @@ class Calibrate(BaseModel):
             axs2[ii, jj].set_xlabel("Frequency (Hz)")
             axs2[ii, jj].set_title(f"Tube {i}")
 
+            # Reflectance
             axs3[ii, jj].semilogx(self.fourier_freq, np.abs(b0/a0) *0 + 1, 'k', lw=1)
+            axs3[ii, jj].semilogx(self.fourier_freq, np.abs(b0/a0) *0, 'k', lw=1)
             axs3[ii, jj].semilogx(self.fourier_freq, np.abs(b0/a0), lw=3)
             axs3[ii, jj].set_ylabel("Reflectance")
             axs3[ii, jj].set_xlabel("Frequency (Hz)")
@@ -583,6 +595,7 @@ class Calibrate(BaseModel):
             axs3[ii, jj].grid()
             axs3[ii, jj].set_title(f"Tube {i}")
 
+            # Reflectance, forward and reverse wave
             axs4[ii, jj].semilogx(self.fourier_freq, todB(a0), label='Forward')
             axs4[ii, jj].semilogx(self.fourier_freq, todB(b0), label='Reflected')
             axs4[ii, jj].set_ylabel("Amplitude (dB SPL)")

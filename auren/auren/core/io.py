@@ -1,18 +1,17 @@
-import os
-import yaml
 import json
+import os
+
+import yaml
 
 try:
     from yaml import CLoader as Loader
 except ImportError:
     from yaml import Loader
 
-from scipy.io import wavfile
-import soundfile
 import numpy as np
-
-
+import soundfile
 from auren.core.signal_processing_utils import to_fourier
+from scipy.io import wavfile
 
 
 def load_test_data(filename: str) -> dict:
@@ -141,7 +140,7 @@ def save_calibration_data(path: str, calibration_data: dict, convert_array_to_li
     return filename
 
 
-def write_wav(path: str, signal: np.ndarray, samplerate: float, dtype=None):
+def write_wav(path: str, signal: np.ndarray, samplerate: float, dtype: type = np.int16):
     """Writes a wavefile to disk, automatically converting to the required dtype
 
     Parameters
