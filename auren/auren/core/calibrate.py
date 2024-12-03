@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from numpydantic import NDArray, Shape
 from pydantic import BaseModel
-from scipy import ndimage
+from scipy import ndimage, interpolate
 
 import auren
 import auren.core.data_models as dm
@@ -39,6 +39,8 @@ class Calibrate(BaseModel):
     bin_oversampling: int = 5
     calibration_smoothing_sigma: float = 9
     calibration_smoothing_sigma_speaker: float = 0.01
+    calibration_use_fft: bool = False
+    calibration_use_global_trim_offset: bool = False
 
     channels: t.List[int] = [1, 2, 3]  # which channels to use for calibration, need at least 3
 
@@ -243,6 +245,7 @@ class Calibrate(BaseModel):
         self.trimmed_data, self.trim_slices = self._trim_data(
             self.raw_data.data[data_id], real_basis, imag_basis, f_at_sample, n_samples, trim_freq=self.trim_frequency
         )
+        # Always do this (even when using FFT) so we get the f_centers (it's lazy, but fast for now)
         f_centers, fourier = self._fourier_transform_raw_data(
             self.trimmed_data,
             real_basis,
@@ -250,6 +253,28 @@ class Calibrate(BaseModel):
             f_at_sample,
             n_samples,
         )
+        if self.calibration_use_fft:
+            f_centers2, fourier2 = to_fourier(self.trimmed_data, self.raw_data.samplerate)
+            fourier = interpolate.interp1d(f_centers2, fourier2, kind="nearest")(f_centers)
+
+            tone_freqs = self.calibration_mic_tone_specs.frequencies
+            tone_durations = self.calibration_mic_tone_specs.durations
+
+            classic_fourier_scale = (
+                np.sqrt(2)
+                / np.sqrt(
+                    tone_durations[0]
+                    / f_centers
+                    / (np.log(tone_freqs[1]) - np.log(tone_freqs[0]))
+                    * (f_centers < tone_freqs[1])
+                    + tone_durations[1]
+                    / f_centers
+                    / (np.log(tone_freqs[2]) - np.log(tone_freqs[1]))
+                    * (f_centers > tone_freqs[1])
+                )
+                * np.sum(tone_durations)
+            )
+            fourier *= classic_fourier_scale
 
         # Step 3: Fourier transform the reference data
         data_id = list(self.raw_data._tones_dict_ref.keys()).index(self.calibration_mic_tone_specs.id)
@@ -261,13 +286,18 @@ class Calibrate(BaseModel):
         for i, slc in enumerate(self.trim_slices):
             self.trimmed_data_ref[i] = data_ref[i, slc]
         #
-        f_centers_ref, fourier_ref = self._fourier_transform_ref_data(
-            self.trimmed_data_ref,
-            real_basis,
-            imag_basis,
-            f_at_sample,
-            n_samples,
-        )
+        if self.calibration_use_fft:
+            f_centers_ref, fourier_ref2 = to_fourier(self.trimmed_data_ref, self.raw_data.samplerate)
+            fourier_ref = interpolate.interp1d(f_centers_ref, fourier_ref2, kind="nearest")(f_centers)
+            fourier_ref *= classic_fourier_scale
+        else:
+            f_centers_ref, fourier_ref = self._fourier_transform_ref_data(
+                self.trimmed_data_ref,
+                real_basis,
+                imag_basis,
+                f_at_sample,
+                n_samples,
+            )
 
         # Step 4: Complete the relative calibration
         rel_cal = self._relative_calibration(f_centers, fourier, self.probe, self.channels)
@@ -637,6 +667,8 @@ class Calibrate(BaseModel):
         # plt.show()
         offset = np.argmax(mag_c, axis=-1) - mag_c.shape[-1] // 2
         offset = np.round(offset.mean(axis=1)).astype(int)  # Average over the channels
+        if self.calibration_use_global_trim_offset:
+            offset[:] = np.round(offset.mean()).astype(int) # Average over all the tube
 
         new_shape = list(data.shape)
         new_shape[-1] = n_samples
@@ -729,7 +761,7 @@ class Calibrate(BaseModel):
 
         # Just accept fate... and realize that phase below 1kHz is too noisy to calibrate
         if self.noise_freq_threshold is not None:
-            rel_cal_ordered[f <= self.noise_freq_threshold] = rel_cal_ordered[f > self.noise_freq_threshold][0]
+            rel_cal_ordered[f <= self.noise_freq_threshold] = np.abs(rel_cal_ordered[f > self.noise_freq_threshold][0])
 
         return rel_cal_ordered
 

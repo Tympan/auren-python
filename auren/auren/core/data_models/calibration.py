@@ -85,9 +85,9 @@ class RawCalibrationData(BaseModel):
     def _load_files(self, files):
         timeseries = []
         # tones = set()
-        tubes = set()
         tones_dict = {}
         minsize = {}
+        tubes_dict = {}
         samplerate = None
         for file in files:
             _, data, my_samplerate = io.load_wav(file.name)
@@ -104,22 +104,29 @@ class RawCalibrationData(BaseModel):
                     )
             timeseries.append(data.T)
             # tones.add(file.tone.id)
-            tubes.add(file.tube.id)
             tones_dict[file.tone.id] = set(list(tones_dict.get(file.tone.id, set())) + [file.tube.id])
             minsize[file.tone.id] = min(data.shape[0], minsize.get(file.tone.id, np.inf))
+            tubes_dict[file.tube.id] = file.tube
 
-        tubes = list(tubes)
+        # tubes = list(tubes)
+        # Sort the tubes based on their string definitions
+        tube_sort = list(tubes_dict.values())
+        tube_sort.sort(key=lambda x: str(x))
+        tubes_id_list = [ts.id for ts in tube_sort]
+
         # initialize data array
         # tones = list(tones)
-        data = [np.zeros((len(tones_dict[tone]), timeseries[-1].shape[0], minsize[tone])) for tone in tones_dict]
+        tones_list = list(tones_dict.keys())
+        tones_list.sort()  # For consistent ordering
+        data = [np.zeros((len(tones_dict[tone]), timeseries[-1].shape[0], minsize[tone])) for tone in tones_list]
         tube_objs = [[None] * len(tones_dict[tone]) for tone in tones_dict]
-
         for i, file in enumerate(files):
             # Enforce the same shape and populate the nice, standard data structure
             # tone_i = tones.index(file.tone.id)
-            tone_i = list(tones_dict.keys()).index(file.tone.id)
-            # tube_i = tubes.index(file.tube.id)
-            tube_i = list(tones_dict[file.tone.id]).index(file.tube.id)
+            tone_i = tones_list.index(file.tone.id)
+
+            tube_list = [til for til in tubes_id_list if til in tones_dict[file.tone.id]]
+            tube_i = tube_list.index(file.tube.id)
             data[tone_i][tube_i] = timeseries[i][:, : minsize[file.tone.id]]
             tube_objs[tone_i][tube_i] = file.tube
 
