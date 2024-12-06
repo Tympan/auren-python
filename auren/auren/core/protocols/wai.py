@@ -1,5 +1,5 @@
 """ Function related to Wideband Acoustic Immittance """
-
+import os
 from typing import List, Tuple, Any, Optional
 import numpy as np
 from scipy import ndimage
@@ -202,22 +202,32 @@ class WAI(BaseModel):
         return self.impedance, self.power_reflectance
 
     def plot_results(self, figkwargs={}, kwargs={}, show=True):
+        # Load normative data from rosowski et al
+        path = os.path.join(os.path.dirname(__file__), "normative_data", "Rosowski-et-al-2012-Normal-Paper-Data-Power-Reflectance.csv")
+        norm_data = np.genfromtxt(path, delimiter=',')
+        norm_avg = norm_data[:, -2]
+        norm_std = norm_data[:, -1]
+        norm_f = norm_data[:, 0]
+
         fig, axs = plt.subplots(2, 2, sharex=True, **figkwargs)
         f = self.f
         axs[0, 0].semilogx(f, 1 - self.power_reflectance[0], **kwargs)
+        axs[0, 0].fill_between(norm_f, 1 - np.clip(norm_avg - norm_std, 0, 1), 1 - np.clip(norm_avg + norm_std, 0, 1), color='k', alpha=0.3)
         axs[0, 0].set_title("Absorbance")
         axs[0, 0].set_ylim(-0.1, 1.1)
         axs[0, 0].grid()
         axs[1, 0].set_ylabel("Fraction")
+        axs[1, 0].fill_between(norm_f, np.clip(norm_avg - norm_std, 0, 1), np.clip(norm_avg + norm_std, 0, 1), color='k', alpha=0.3)
         axs[1, 0].semilogx(f, self.power_reflectance[0], **kwargs)
         axs[1, 0].set_title("Power Reflectance")
-        axs[1, 1].set_ylabel("Fraction")
+        axs[1, 0].set_ylabel("Fraction")
         axs[1, 0].set_ylim(-0.1, 1.1)
         axs[1, 0].grid()
         axs[0, 1].semilogx(f, todB(self.impedance[0], ref=self.cavern_model.za1), **kwargs)
         axs[0, 1].set_title("Impedance Magnitude")
         axs[0, 1].grid()
-        axs[1, 1].set_ylabel("dB re Z0")
+        axs[0, 1].set_ylabel("dB re Z0")
+        axs[1, 1].semilogx(f, f*0 - 90, "k")
         axs[1, 1].semilogx(f, np.rad2deg(np.angle(self.impedance[0].magnitude)), **kwargs)
         axs[1, 1].set_title("Impedance Phase (degrees)")
         axs[1, 1].set_ylim(-100, 100)
@@ -228,4 +238,6 @@ class WAI(BaseModel):
 
         if show:
             plt.show()
+
+        return fig, axs
 
