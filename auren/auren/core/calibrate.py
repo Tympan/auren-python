@@ -11,7 +11,7 @@ from scipy import ndimage, interpolate
 import auren
 import auren.core.data_models as dm
 from auren.core import io, model
-from auren.core.signal_processing_utils import dft_known_basis, pad_chirp, to_fourier
+from auren.core.signal_processing_utils import dft_known_basis, pad_chirp, to_fourier, trim_signal_max_correlation_at_f
 from auren.core.tympan_serial import TympanSerial
 from auren.core.utils import todB
 
@@ -282,9 +282,14 @@ class Calibrate(BaseModel):
         data_ref = (
             self.raw_data.data_ref[data_id][:, 0] * self.tympan_full_scale_voltage / self.ref_mic_sensitivity * 1000
         )
-        self.trimmed_data_ref = np.zeros((data_ref.shape[0], self.trimmed_data.shape[-1]))
-        for i, slc in enumerate(self.trim_slices):
-            self.trimmed_data_ref[i] = data_ref[i, slc]
+        self.trimmed_data_ref, _ = self._trim_data(
+            data_ref[:, None], real_basis, imag_basis, f_at_sample, n_samples, trim_freq=self.trim_frequency
+        )
+        self.trimmed_data_ref = self.trimmed_data_ref[:, 0]
+        # If the reference was on the same recording, then we could do the below... but we can't
+        # self.trimmed_data_ref = np.zeros((data_ref.shape[0], self.trimmed_data.shape[-1]))
+        # for i, slc in enumerate(self.trim_slices):
+        #     self.trimmed_data_ref[i] = data_ref[i, slc]
         #
         if self.calibration_use_fft:
             f_centers_ref, fourier_ref2 = to_fourier(self.trimmed_data_ref, self.raw_data.samplerate)
@@ -312,8 +317,8 @@ class Calibrate(BaseModel):
         cal = self._combine_smooth_cal(f_centers, rel_cal, abs_cal, self.channels, self.calibration_smoothing_sigma)
 
         # Step 7: Create the summarized calibration objects for the mics and start populating the full calibration object
-        mics = [dm.MicCalibration(cal=c, channel=i) for i, c in enumerate(cal)]
-        cal_obj = dm.CalibrationData(mic=mics, calibrated_channels=self.channels)
+        mics = [dm.MicCalibration(cal=c, channel=i, distance=self.probe.mic_positions[i]) for i, c in enumerate(cal)]
+        cal_obj = dm.CalibrationData(mic=mics, calibrated_channels=self.channels, probe=self.probe)
 
         # Calibrate the pressure for the calibration data (to do self-consistency test)
         p_cal = cal_obj.cal_p(f_centers, fourier) * auren.units("Pa")
@@ -579,8 +584,6 @@ class Calibrate(BaseModel):
                 k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p[tube, mic1, :], p1=p[tube, mic2, :]
             ).magnitude
 
-
-
             ii = i // 2
             jj = i % 2
 
@@ -639,55 +642,15 @@ class Calibrate(BaseModel):
 
     ######## PRIVATE METHODS
     def _trim_data(self, data, real_basis, imag_basis, f_at_sample, n_samples, trim_freq):
-        # trim_freq = self.calibration_block_size * 8
-        i = np.argmin(np.abs(f_at_sample - trim_freq))
-        sym_pad = (data.shape[-1] - real_basis[1].shape[0]) // 2
-
-        sub_slice = slice(
-            i - int(self.calibration_block_size * 1.5) + sym_pad,
-            i + int(self.calibration_block_size * 1.5) + 1 + sym_pad,
+        return trim_signal_max_correlation_at_f(
+            data,
+            f_at_sample,
+            trim_freq,
+            real_basis[1][:, 0],
+            imag_basis[1][:, 0],
+            self.calibration_block_size,
+            self.calibration_use_global_trim_offset,
         )
-        sub_slice2 = slice(i - self.calibration_block_size // 2, i + self.calibration_block_size // 2 + 1)
-        subdata = data[..., sub_slice]
-        r_base = real_basis[1][sub_slice2, 0]
-        i_base = imag_basis[1][sub_slice2, 0]
-
-        real_c = ndimage.convolve1d(subdata, r_base[::-1], axis=-1)
-        imag_c = ndimage.convolve1d(subdata, i_base[::-1], axis=-1)
-        # tube = 3
-        mag_c = np.sqrt(
-            real_c ** 2 + imag_c ** 2
-        )  # [..., self.calibration_block_size // 2: self.calibration_block_size // 2 + self.calibration_block_size]
-        # t = np.arange(mag_c.shape[-1]) - mag_c.shape[-1] // 2
-        # plt.plot(real_c[tube, 0])
-        # plt.plot(imag_c[tube, 0])
-        # plt.plot(mag_c[tube, 0])
-        # plt.show()
-        # plt.plot(t, mag_c[tube].T)
-        # plt.show()
-        offset = np.argmax(mag_c, axis=-1) - mag_c.shape[-1] // 2
-        offset = np.round(offset.mean(axis=1)).astype(int)  # Average over the channels
-        if self.calibration_use_global_trim_offset:
-            offset[:] = np.round(offset.mean()).astype(int) # Average over all the tube
-
-        new_shape = list(data.shape)
-        new_shape[-1] = n_samples
-        new_data = np.zeros(new_shape)
-        slices = []
-        for i, off in enumerate(offset):
-            slices.append(slice(sym_pad + off, sym_pad + off + n_samples))
-            new_data[i] = data[i, ..., slices[-1]]
-
-        # Check
-        # tube = 0
-        # chan = 0
-        # print("This: ",
-        #     np.sqrt((new_data[tube, chan, sub_slice2] * r_base).sum() ** 2 + (new_data[tube, chan, sub_slice2] * i_base).sum() ** 2),
-        #     " should roughly equal: ",
-        #     mag_c[tube, chan, offset[tube] + mag_c.shape[-1] // 2]
-        # )
-
-        return new_data, slices
 
     def _fourier_transform_raw_data(self, data_raw, real_basis, imag_basis, f_at_sample, n_samples):
         # The Tympan firmware adds some padding before and after playing the .wav file ON TOP of our
@@ -831,6 +794,13 @@ class Calibrate(BaseModel):
         cal_abs_amp_bin = np.zeros((N - 1, n_channels))
         for i in range(f_center.size):
             I = (f >= f_bins[i]) & (f < f_bins[i + 1])
+            if I.sum() == 0:
+                # This is an edge effect -- so just make the edges larger in this case
+                if i == 0:
+                    I = (f >= f_bins[i]) & (f < f_bins[i + 2])
+                else:
+                    I = (f >= f_bins[i - 1]) & (f < f_bins[i + 1])
+
             cal_phase_bin[i] = np.nanmean(phase[I], axis=0)
             cal_amp_bin[i] = np.nanmean(amp[I], axis=0)
             # cal_phase_bin_mean[i] = np.mean(mean_phase[I], axis=0)
@@ -850,15 +820,6 @@ class Calibrate(BaseModel):
         cal_abs_amp_bin_smooth = ndimage.gaussian_filter1d(
             cal_abs_amp_bin_max, sigma / 2, mode="nearest", axis=0, truncate=2.5
         )
-
-        # Just accept fate... and realize that phase below 1kHz is too noisy to calibrate
-        # if self.noise_freq_threshold is not None:
-        #     cal_phase_bin_smooth[f_center <= self.noise_freq_threshold] = cal_phase_bin_smooth[
-        #         f_center > self.noise_freq_threshold
-        #     ][0]
-        #     cal_amp_bin_smooth[f_center <= self.noise_freq_threshold] = cal_amp_bin_smooth[
-        #         f_center > self.noise_freq_threshold
-        #     ][0]
 
         # Finish up the calibration -- combine the results
         cal = np.zeros((n_channels, N - 1, 3))
@@ -883,6 +844,7 @@ class Calibrate(BaseModel):
             f_at_sample = self.calibration_speaker_tone_specs[i].get(return_freq=True)[2]
 
             chnls = self.calibration_speaker_tone_specs[i].channels
+            chnl_id = int(chnls[1])  # bit of cleverness here, [False, True] --> 1, [True, False] --> 0
             real_basis[1] = real_basis[1][:, chnls]
             imag_basis[1] = imag_basis[1][:, chnls]
 
@@ -913,9 +875,9 @@ class Calibrate(BaseModel):
             a0 = self._cavern_model.A_measured(
                 k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p_cal[..., mic1, :], p1=p_cal[..., mic2, :]
             ).magnitude
-            b0 = self._cavern_model.B_measured(
-                k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p_cal[..., mic1, :], p1=p_cal[..., mic2, :]
-            ).magnitude
+            # b0 = self._cavern_model.B_measured(
+            #     k, x=None, x0=x_mic[mic1], x1=x_mic[mic2], p0=p_cal[..., mic1, :], p1=p_cal[..., mic2, :]
+            # ).magnitude
 
             # Desired A0
             db_cal_frac = 10 ** (self.calibration_tone_db / 20)
@@ -926,7 +888,8 @@ class Calibrate(BaseModel):
             cal_frac_smooth = self._combine_smooth_cal(
                 f_centers, cal_frac.T, cal_frac.squeeze() * 0 + 1 + 0j, [0], self.calibration_smoothing_sigma_speaker
             )
-            speaker_cal[i] = cal_frac_smooth[0, :, :2]
+            # print(chnl_id, chnls, self.calibration_speaker_tone_specs[i])
+            speaker_cal[chnl_id] = cal_frac_smooth[0, :, :2]
 
             # plt.semilogx(f_centers, 20 * np.log10(np.abs(a0) / 20e-6).T, label="A0");
             # plt.semilogx(f_centers, 20 * np.log10(np.abs(b0) / 20e-6).T, '--', label="B0")
@@ -940,4 +903,3 @@ class Calibrate(BaseModel):
             # plt.show()
 
         return speaker_cal
-

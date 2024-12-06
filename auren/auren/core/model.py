@@ -542,7 +542,7 @@ class TwoDiameterTube(StraightTube):
         )
         return B1
 
-    def u_measured(self, f, x, p0, p1, A0=None, B0=None, A1=None, B1=None):
+    def u_measured(self, f, x, p0, p1, A0=None, B0=None, A1=None, B1=None, in_D1=False):
         """Return value of pressure (p) at given frequencies and x positions in the straight tube
 
         Parameters
@@ -566,7 +566,7 @@ class TwoDiameterTube(StraightTube):
             B0 = self.B0_measured(k, p0, p1)
         if A0 is None:
             A0 = self.A0_measured(k, p0, p1, B0)
-        if x <= self.xp:
+        if x <= self.xp and not in_D1:
             # still in the D0 tube, proceed as usual
             return (A0 * np.exp(-1j * k * x) - B0 * np.exp(1j * k * x)) / self.z0
 
@@ -577,7 +577,7 @@ class TwoDiameterTube(StraightTube):
             A1 = self.A1_measured(k, A0, B0, B1)
         return (A1 * np.exp(-1j * k * x) - B1 * np.exp(1j * k * x)) / self.z0
 
-    def p_measured(self, f, x, p0, p1, A0=None, B0=None, A1=None, B1=None):
+    def p_measured(self, f, x, p0, p1, A0=None, B0=None, A1=None, B1=None, in_D1=False):
         """Return value of pressure (p) at given frequencies and x positions in the straight tube
 
         Parameters
@@ -597,7 +597,7 @@ class TwoDiameterTube(StraightTube):
             B0 = self.B0_measured(k, p0, p1)
         if A0 is None:
             A0 = self.A0_measured(k, p0, p1, B0)
-        if x <= self.xp:
+        if x <= self.xp and not in_D1:
             # still in the D0 tube, proceed as usual
             return A0 * np.exp(-1j * k * x) + B0 * np.exp(1j * k * x)
 

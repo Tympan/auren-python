@@ -246,6 +246,93 @@ def trim_signal_mean_amplitude(
     return data[..., slc]
 
 
+def trim_signal_max_correlation_at_f(
+    data: np.ndarray,
+    f_at_sample: np.ndarray,
+    trim_freq: float,
+    real_basis: np.ndarray,
+    imag_basis: np.ndarray,
+    block_size: int,
+    use_global_trim_offset: bool,
+) -> t.Tuple[np.ndarray, t.List[slice]]:
+    """Trim data by finding the max correlation of a signal with a reference basis at a specific frequency
+
+    Parameters
+    ----------
+    data : np.ndarray
+        The data to be trimmed
+    f_at_sample : np.ndarray
+        The frequency of the data for that sample in the basis
+    trim_freq : float
+        Frequency used to figure out the max correlations
+    real_basis : np.ndarray
+        The real part of the expected basis function, where the first item in the list is the time
+    imag_basis : np.ndarray
+        The imaginary part (90 deg out of phase) of the basis function
+    block_size : int
+        The block size over which to look for a maximum
+    use_global_trim_offset : bool
+        If True, a single trim offset is returned. Otherwise, if data has multiple dimensions, the offset is averaged
+        over axis=1
+
+    Returns
+    -------
+    np.ndarray, t.List[slice]]
+        The trimmed signal
+    List[slice]
+        The list of slices used to trim the data.
+    """
+    n_samples = real_basis.shape[0]
+    i = np.argmin(np.abs(f_at_sample - trim_freq))
+    sym_pad = (data.shape[-1] - n_samples) // 2
+
+    sub_slice = slice(
+        i - int(block_size * 1.5) + sym_pad,
+        i + int(block_size * 1.5) + 1 + sym_pad,
+    )
+    sub_slice2 = slice(i - block_size // 2, i + block_size // 2 + 1)
+    subdata = data[..., sub_slice]
+    r_base = real_basis[sub_slice2]
+    i_base = imag_basis[sub_slice2]
+
+    real_c = ndimage.convolve1d(subdata, r_base[::-1], axis=-1)
+    imag_c = ndimage.convolve1d(subdata, i_base[::-1], axis=-1)
+    # tube = 3
+    mag_c = np.sqrt(
+            real_c ** 2 + imag_c ** 2
+        )  # [..., block_size // 2: block_size // 2 + self.calibration_block_size]
+    # t = np.arange(mag_c.shape[-1]) - mag_c.shape[-1] // 2
+    # plt.plot(real_c[tube, 0])
+    # plt.plot(imag_c[tube, 0])
+    # plt.plot(mag_c[tube, 0])
+    # plt.show()
+    # plt.plot(t, mag_c[tube].T)
+    # plt.show()
+    offset = np.argmax(mag_c, axis=-1) - mag_c.shape[-1] // 2
+    offset = np.round(offset.mean(axis=1)).astype(int)  # Average over the channels
+    if use_global_trim_offset:
+        offset[:] = np.round(offset.mean()).astype(int)  # Average over all the tube
+
+    new_shape = list(data.shape)
+    new_shape[-1] = n_samples
+    new_data = np.zeros(new_shape)
+    slices = []
+    for i, off in enumerate(offset):
+        slices.append(slice(sym_pad + off, sym_pad + off + n_samples))
+        new_data[i] = data[i, ..., slices[-1]]
+
+    # Check
+    # tube = 0
+    # chan = 0
+    # print("This: ",
+    #     np.sqrt((new_data[tube, chan, sub_slice2] * r_base).sum() ** 2 + (new_data[tube, chan, sub_slice2] * i_base).sum() ** 2),
+    #     " should roughly equal: ",
+    #     mag_c[tube, chan, offset[tube] + mag_c.shape[-1] // 2]
+    # )
+
+    return new_data, slices
+
+
 def make_chirp(
     times: np.ndarray,
     f0: float,

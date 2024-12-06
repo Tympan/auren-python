@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from auren.core import io
 from auren.core.data_models.calibration_geometry import TubeGeometry
 from auren.core.data_models.chirp import Chirp
+from auren.core.data_models.probe import Probe
 from auren.core.utils import todB
 
 
@@ -227,12 +228,18 @@ class CalibrationData(BaseModel):
     speaker: t.Optional[t.List[SpeakerCalibration]] = None
     description: str = ""
     calibrated_channels: t.Optional[t.List[int]] = None
+    block_size: float = 1024
+    probe: Probe
 
     _mic_cal_cache = None
 
     @property
     def n_channels(self):
         return len(self.mic)
+
+    @property
+    def n_regions(self):
+        return self.mic[0].cal.shape[0]
 
     def cal_p(self, f, p):
         p_cal = np.zeros_like(p)
