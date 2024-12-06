@@ -1,4 +1,8 @@
-# The Open Wideband Audiometric Immittance Python Library
+# The Auren Python Library
+
+## Introduction
+
+This software is in early alpha.
 
 ## Installation using Pyenv
 
