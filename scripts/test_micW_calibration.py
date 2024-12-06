@@ -1,9 +1,9 @@
 import json
 import matplotlib.pyplot as plt
 
-from owai.core.calibrate import Calibrate
+from auren.core.calibrate import Calibrate
 import numpy as np
-import owai.core.data_models as odm
+import auren.core.data_models as odm
 
 base_path = '/mnt/c/Repositories/OpenHearing/open-hearing-hardware/jupyter_notebooks/calibrate'
 with open(base_path + "/calibration_data/rawdata_channels.json") as fid:
