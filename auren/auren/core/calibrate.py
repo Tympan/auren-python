@@ -52,8 +52,8 @@ class Calibrate(BaseModel):
 
     sound_speed: float = 343  # m/s
 
-    ref_mic_sensitivity: float = 3.83  # mv/Pa
-    tympan_full_scale_voltage: float = 0.375 * np.sqrt(2)  # Volts FS
+    ref_mic_sensitivity: float  # mv/Pa -- This is REQUIRED, and must be set by the user
+    tympan_full_scale_voltage: float = 1  # Volts FS
     trim_frequency: float = 16000  # Frequency used to figure out the data offset and then trim the signal
 
     ### OUTPUTS Section ###
