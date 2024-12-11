@@ -65,7 +65,13 @@ dpoae_chirp = [
     odm.chirp.Chirp(durations=[10], frequencies=[200, 16000]),
     odm.chirp.Chirp(durations=[10], frequencies=[200 * dpoae_ratio, 16000 * dpoae_ratio])
 ]
-dpoae_tone = dpoae_swept.make_tone(cal.calibration, dpoae_chirp, levels=[60, 65], pad_time=0.25)
+dpoae_test = dpoae_swept.DPOAE(
+    calibration=cal.calibration,
+    tones=dpoae_chirp,
+    levels=[60, 65],
+    pad_time=0.25
+)
+dpoae_tone = dpoae_test.make_tone()
 dpoae_path = os.path.join(cal.out_path, 'protocol_wav', "PLAY2.WAV")
 os.makedirs(os.path.split(dpoae_path)[0], exist_ok=True)
 io.write_wav(dpoae_path, dpoae_tone[:, ::-1].copy(), dpoae_chirp[0].samplerate, np.int16)
@@ -93,6 +99,12 @@ axs[0, 1].semilogx(hp_f, todB(hp_Z, ref=wai_test.cavern_model.za1.to_base_units(
 axs[1, 1].semilogx(hp_f, np.rad2deg(np.angle(hp_Z)))
 axs[0, 1].legend(["Auren", "Hot Probe"])
 axs[0, 0].set_xlim(200, 20000)
+
+# Analyze DPOAE data
+dpoae_path = os.path.join(cal.out_path, 'calibration_validation', "AUDIO015.WAV")
+_, dpoae_wav, _ = io.load_wav(dpoae_path)
+dp1, dp2, dpn = dpoae_test.analyze_iteration(dpoae_wav)
+dpoae_test.plot_results(show=False)
 plt.show()
 
 

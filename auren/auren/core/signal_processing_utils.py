@@ -512,6 +512,7 @@ def dft_known_basis(
     basis_imag: NDArray,
     block_size: int = 2048,
     n_regions: int = 256,
+    normalize_basis: bool = True
 ) -> t.Tuple[NDArray, NDArray]:
 
     n_samples = data.shape[-1]
@@ -527,9 +528,72 @@ def dft_known_basis(
     fourier = np.zeros(data.shape[:-1] + (n_regions,), complex)
 
     for i, start_ind in enumerate(start_inds):
+        imag_norm = real_norm = 2
         slc = slice(start_ind, start_ind + block_size)
-        real = (basis_real[..., slc] * data[..., slc] * han_win).mean(axis=-1)
-        imag = (basis_imag[..., slc] * data[..., slc] * han_win).mean(axis=-1)
-        fourier[..., i] = 2 * (real + 1j * imag)
+        if normalize_basis:
+            # real_norm = 1 / np.sqrt(np.abs(basis_real[..., slc])**2 * han_win).mean()
+            # imag_norm = 1 / np.sqrt(np.abs(basis_imag[..., slc])**2 * han_win).mean()
+            real_norm = np.sqrt(2) / np.sqrt(np.abs(basis_real[..., slc])**2).mean()
+            imag_norm = np.sqrt(2) / np.sqrt(np.abs(basis_imag[..., slc])**2).mean()
+        data_mean = data[..., slc].mean(axis=-1, keepdims=True)
+        real = (real_norm * basis_real[..., slc] * (data[..., slc] - data_mean) * han_win).mean(axis=-1)
+        imag = (imag_norm * basis_imag[..., slc] * (data[..., slc] - data_mean) * han_win).mean(axis=-1)
+        fourier[..., i] = real + 1j * imag
 
     return f_centers, fourier
+
+def dft_known_basis_noise(
+    data: NDArray,
+    f_at_sample: t.List[NDArray],
+    bases_real: t.List[NDArray],
+    bases_imag: t.List[NDArray],
+    coeffs: t.List[NDArray],
+    samplerate: int,
+    block_size: int = 2048,
+    n_regions: int = 256,
+    normalize_basis: bool = True,
+    bandpass_frac: int = 0,
+) -> t.Tuple[NDArray, NDArray]:
+
+    n_samples = data.shape[-1]
+    start_inds = np.round(np.linspace(0, n_samples - block_size, n_regions)).astype(int)
+
+    han_win = signal.windows.hann(block_size, sym=True)
+    # Normalize so we can use it with the orthogonal basis
+    han_win = han_win / han_win.mean()
+    # han_win = han_win * 0 + 1
+
+    # Initialize outputs
+    noise = np.zeros(data.shape[:-1] + (n_regions,), complex)
+    noise_data = data.copy()
+    signal_data = np.zeros_like(data)
+    for i, start_ind in enumerate(start_inds):
+        imag_norm = real_norm = 2
+        slc = slice(start_ind, start_ind + block_size)
+        # Remove the mean
+        data_mean = data[..., slc].mean(axis=-1, keepdims=True)
+        noise_data[..., slc] -= data_mean
+        signal_data[..., slc] += data_mean
+        for basis_real, basis_imag, coeff in zip(bases_real, bases_imag, coeffs):
+            if normalize_basis:
+                # real_norm = 1 / np.sqrt(np.abs(basis_real[..., slc])**2 * han_win).mean()
+                # imag_norm = 1 / np.sqrt(np.abs(basis_imag[..., slc])**2 * han_win).mean()
+                real_norm = np.sqrt(2) / np.sqrt(np.abs(basis_real[..., slc])**2).mean()
+                imag_norm = np.sqrt(2) / np.sqrt(np.abs(basis_imag[..., slc])**2).mean()
+            # real = (real_norm * basis_real[..., slc] * data[..., slc] * han_win).mean(axis=-1)
+            # imag = (imag_norm * basis_imag[..., slc] * data[..., slc] * han_win).mean(axis=-1)
+            signal_data[..., slc] += 0.5 * real_norm * basis_real[..., slc] * np.real(coeff[..., i])[..., None]
+            signal_data[..., slc] += 0.5 * imag_norm * basis_imag[..., slc] * np.imag(coeff[..., i])[..., None]
+        noise_data[..., slc] = (data[..., slc] - signal_data[..., slc]) * han_win
+
+        # Figure out the bandpass filter for this block, and then filter the data
+        fmin = min([f[..., slc].min() for f in f_at_sample])
+        fmax = max([f[..., slc].max() for f in f_at_sample])
+        f_low = fmin - (fmax - fmin) * bandpass_frac
+        f_high = fmax + (fmax - fmin) * bandpass_frac
+        b, a = signal.butter(3, [f_low, f_high], fs=samplerate, btype="band")
+        noise_data[..., slc] = signal.lfilter(b, a, noise_data[..., slc])
+
+        noise[..., i] = np.sqrt(np.mean(noise_data[..., slc]**2, axis=-1))
+
+    return signal_data, noise_data, noise
