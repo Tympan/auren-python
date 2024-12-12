@@ -570,7 +570,9 @@ class Calibrate(BaseModel):
             x_mic = self.probe.get_unit("mic_positions")
             data_id = list(self.raw_data._tones_dict_ref.keys()).index(self.calibration_mic_tone_specs.id)
             tube_obj = self.raw_data.tubes_ref[data_id][tube]
-            x_ref_mic = tube_obj.get_unit("probe_locations")[0]
+            l = self.probe.get_unit("length")
+            x_ref_mic = l + tube_obj.get_unit("probe_locations")[0]
+
             p = self.calibration.cal_p(self.fourier_freq, self.fourier)
             p3_pred = self._cavern_model.p_measured(
                 self.fourier_freq * auren.units.Hz, x_ref_mic, x_mic[mic1], x_mic[mic2], p[tube, mic1], p[tube, mic2]
@@ -603,7 +605,6 @@ class Calibrate(BaseModel):
                 label="Predicted from Mics %s, %s" % (mic1, mic2),
             )
             axs[ii, jj].semilogx(self.fourier_freq, todB(self.fourier_ref[tube]), "C1", lw=2, label="Measured, Ref Mic")
-            axs[ii, jj].legend()
             axs[ii, jj].set_ylabel("Amplitude (dB SPL)")
             axs[ii, jj].set_xlabel("Frequency (Hz)")
             axs[ii, jj].set_title(f"Tube {i}")
@@ -633,9 +634,10 @@ class Calibrate(BaseModel):
             axs4[ii, jj].semilogx(self.fourier_freq, todB(b0), label='Reflected')
             axs4[ii, jj].set_ylabel("Amplitude (dB SPL)")
             axs4[ii, jj].set_xlabel("Frequency (Hz)")
-            axs4[ii, jj].legend()
             axs4[ii, jj].grid()
             axs4[ii, jj].set_title(f"Tube {i}")
+        axs[0, 0].legend()
+        axs4[0, 0].legend()
 
         if show:
             plt.show()
@@ -743,7 +745,8 @@ class Calibrate(BaseModel):
         # n_caverns = 1
 
         x = probe.get_unit("mic_positions").to("m").magnitude[channels]
-        x_ref_mic = [tube.get_unit("probe_locations")[0].to("m").magnitude for tube in tubes]
+        l = probe.get_unit("length").to("m").magnitude
+        x_ref_mic = [tube.get_unit("probe_locations")[0].to("m").magnitude + l for tube in tubes]
 
         A = np.zeros((p.shape[-1], (n_channels + 1) * n_caverns, 2 * n_caverns + 1), dtype=np.complex128)
         b = np.zeros((p.shape[-1], (n_channels + 1) * n_caverns), dtype=np.complex128)
