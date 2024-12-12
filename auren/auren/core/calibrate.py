@@ -748,27 +748,57 @@ class Calibrate(BaseModel):
         l = probe.get_unit("length").to("m").magnitude
         x_ref_mic = [tube.get_unit("probe_locations")[0].to("m").magnitude + l for tube in tubes]
 
-        A = np.zeros((p.shape[-1], (n_channels + 1) * n_caverns, 2 * n_caverns + 1), dtype=np.complex128)
-        b = np.zeros((p.shape[-1], (n_channels + 1) * n_caverns), dtype=np.complex128)
-        for j in range(n_caverns):
-            A[:, j * (n_channels + 1) : (j + 1) * (n_channels + 1) - 1, j * 2 + 0] = np.exp(
-                -1j * k[:, None] * x[None, :]
-            )
-            A[:, j * (n_channels + 1) : (j + 1) * (n_channels + 1) - 1, j * 2 + 1] = np.exp(
-                1j * k[:, None] * x[None, :]
-            )
-            A[:, (j + 1) * (n_channels + 1) - 1, j * 2 + 0] = np.exp(-1j * k * x_ref_mic[j])
-            A[:, (j + 1) * (n_channels + 1) - 1, j * 2 + 1] = np.exp(1j * k * x_ref_mic[j])
-            for i in range(n_channels):
-                A[:, j * (n_channels + 1) + i, -1] = -p[j, channels[i]] * rel_cal[:, channels[i]]
-            b[:, (j + 1) * (n_channels + 1) - 1] = np.abs(p_ref[j])
-            # b[:, (j + 1) * (n_channels + 1) - 1] = (p_ref[j])  # This is worse
+        # I believe that approach below really requires accurate phase information to work properly
+        # A = np.zeros((p.shape[-1], (n_channels + 1) * n_caverns, 2 * n_caverns + 1), dtype=np.complex128)
+        # b = np.zeros((p.shape[-1], (n_channels + 1) * n_caverns), dtype=np.complex128)
+        # for j in range(n_caverns):
+        #     A[:, j * (n_channels + 1) : (j + 1) * (n_channels + 1) - 1, j * 2 + 0] = np.exp(
+        #         -1j * k[:, None] * x[None, :]
+        #     )
+        #     A[:, j * (n_channels + 1) : (j + 1) * (n_channels + 1) - 1, j * 2 + 1] = np.exp(
+        #         1j * k[:, None] * x[None, :]
+        #     )
+        #     A[:, (j + 1) * (n_channels + 1) - 1, j * 2 + 0] = np.exp(-1j * k * x_ref_mic[j])
+        #     A[:, (j + 1) * (n_channels + 1) - 1, j * 2 + 1] = np.exp(1j * k * x_ref_mic[j])
+        #     for i in range(n_channels):
+        #         A[:, j * (n_channels + 1) + i, -1] = -p[j, channels[i]] * rel_cal[:, channels[i]]
+        #     b[:, (j + 1) * (n_channels + 1) - 1] = np.abs(p_ref[j])
+        #     # b[:, (j + 1) * (n_channels + 1) - 1] = (p_ref[j])  # This is worse
 
-        Ainv = np.linalg.pinv(A)
+        # Ainv = np.linalg.pinv(A)
 
-        sol = np.einsum("ijk,ik->ij", Ainv, b)
-        # amp_cal = (sol[:, -1])   # This is worse
-        amp_cal = np.abs(sol[:, -1])
+        # sol = np.einsum("ijk,ik->ij", Ainv, b)
+        # # amp_cal = (sol[:, -1])   # This is worse
+        # amp_cal = np.abs(sol[:, -1])
+        # stop
+
+        # do it the other way
+        amp_cal2 = []
+        for i in range(n_caverns):
+            pred = self._cavern_model.p_measured(
+                f * auren.units("Hz"),
+                x_ref_mic[i] * auren.units("m"),
+                x[0] * auren.units("m"),
+                x[-1] * auren.units("m"),
+                p[i, channels[0]] * rel_cal[:, channels[0]],
+                p[i, channels[-1]] * rel_cal[:, channels[-1]]
+            )
+            amp_cal2.append(np.abs(p_ref[i, 0]) / np.abs(pred))
+
+        # These plots show that the main difference are in the higher frequencies
+        # fig, axs = plt.subplots(2, 1, sharex=True)
+        # axs[0].loglog(f, np.abs(amp_cal), label="standard")
+        # for i in range(n_caverns):
+        #     axs[0].loglog(f, amp_cal2[i], label=str(i))
+        #     axs[1].loglog(f, np.abs(p[i, channels[0]]), "C%d" %i, label=str(i))
+        #     axs[1].loglog(f, np.abs(p[i, channels[-1]]), "--C%d" %i, label=str(i) + '_2')
+
+        # axs[0].loglog(f, np.mean(amp_cal2, axis=0), label="average")
+        # axs[0].legend()
+        # axs[1].legend()
+        # plt.show()
+
+        amp_cal = np.mean(amp_cal2, axis=0)
 
         return amp_cal
 
