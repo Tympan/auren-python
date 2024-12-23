@@ -391,6 +391,7 @@ def make_multi_chirp(
     return_freq: bool = False,
     return_phase: bool = False,
     pad_time=0,
+    repeats:int = None
 ) -> np.ndarray:
     """Generates a logarithmic/exponential chirp in the time domain
 
@@ -408,6 +409,8 @@ def make_multi_chirp(
         Phase offset in radians, by default 0
     return_freq : bool, optional
         Default is False. If True, also returns the frequency as a function of time for the chirp as the SECOND argument
+    repeats : int, optional
+        Default is None. If provided, repeats the chirp this many times.
 
     Returns
     -------
@@ -443,6 +446,30 @@ def make_multi_chirp(
         f_at_t[I] = fatt
         p_at_t[I] = patt + last_phase
         last_phase = patt[-1]
+
+    if repeats:
+        datas = [data]
+        f_at_ts = [f_at_t]
+        p_at_ts = [p_at_t]
+        for i in range(repeats-1):
+            times, data, f_at_t, p_at_t = make_multi_chirp(
+                frequencies,
+                durations,
+                samplerate,
+                amplitude_func,
+                phi=p_at_ts[-1][-1],
+                return_freq=True,
+                return_phase=True,
+                pad_time=0,
+                repeats=None
+            )
+            datas.append(data)
+            f_at_ts.append(f_at_t)
+            p_at_ts.append(p_at_t)
+        data = np.concatenate(datas)
+        f_at_t = np.concatenate(f_at_ts)
+        p_at_t = np.concatenate(p_at_ts)
+        times = np.linspace(0, total_duration * repeats, int(total_duration * samplerate * repeats))
 
     if pad_time > 0:
         times, data = pad_chirp(times, data, frequencies[0], frequencies[-1], pad_time, phi, last_phase=p_at_t[-1])

@@ -17,12 +17,15 @@ import auren
 
 class DPOAE(BaseModel):
     calibration: calibration.CalibrationData
-    tones: Tuple[chirp.Chirp, chirp.Chirp]
-    levels: Tuple[float, float] = [65, 60]
+    levels: Tuple[float, float] = [55, 65]  # low freq level, high freq level
     pad_time: float = 0.25
     mic_channels_used: Tuple[int, int] = [1, 3]
     units: str = "mm"
     ear_diameter: float = 3.75 * 2
+    repeats: int = 11
+    duration: float = 1
+    dpoae_ratio: float = 1.2
+    frequencies: Tuple[float, float] = [200, 2000]
 
     power_reflectance: Optional[Any] = None
     impedance: Optional[Any] = None
@@ -35,6 +38,14 @@ class DPOAE(BaseModel):
     p_noise: Optional[Any] = None
 
     _cavern_model: model.Model = None
+
+    @property
+    def tones(self):
+        low_high_freq = self.frequencies[1] / self.dpoae_ratio
+        high_low_freq = self.frequencies[0] * self.dpoae_ratio
+        t_low = chirp.Chirp(durations=[self.duration], frequencies=[self.frequencies[0], low_high_freq])
+        t_high = chirp.Chirp(durations=[self.duration], frequencies=[high_low_freq, self.frequencies[1]])
+        return [t_low, t_high]
 
     @property
     def cavern_model(self):
@@ -73,7 +84,7 @@ class DPOAE(BaseModel):
         amp_funcs = [calibration.cal_speaker(level)[i] for i,level in enumerate(levels)]
         # Generate the chirps, where each speaker tries to produce the full-scale sound
         chirps = [
-            tone.get(phi, amplitude_func=amp_func, pad_time=pad_time, return_freq=True)
+            tone.get(phi, amplitude_func=amp_func, pad_time=pad_time, repeats=self.repeats, return_freq=True)
             for amp_func, tone in zip(amp_funcs, tones)
         ]
         chirp_channels = np.stack([c[1] for c in chirps], axis=1)

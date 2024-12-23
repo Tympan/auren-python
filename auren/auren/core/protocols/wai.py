@@ -16,12 +16,13 @@ from auren.core.signal_processing_utils import dft_known_basis, trim_signal_max_
 
 class WAI(BaseModel):
     calibration: calibration.CalibrationData
-    tone: chirp.Chirp
     level: float = 65
     pad_time: float = 0.25
-    mic_channels_used: Tuple[int, int] = [1, 3]
+    mic_channels_used: Tuple[int, int] = (1, 3)
     units: str = "mm"
     ear_diameter: float = 3.75 * 2
+    frequencies: Tuple[float, float] = (200, 20000)  # Hz
+    duration: int = 10  # seconds
 
     power_reflectance: Optional[Any] = None
     impedance: Optional[Any] = None
@@ -31,6 +32,10 @@ class WAI(BaseModel):
     u_cal_at_mic1: Optional[Any] = None
 
     _cavern_model: model.Model = None
+
+    @property
+    def tone(self):
+        return chirp.Chirp(durations=[self.duration], frequencies=self.frequencies)
 
     @property
     def cavern_model(self):

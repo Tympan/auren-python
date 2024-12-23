@@ -18,7 +18,12 @@ class Chirp(IDMixin, GetUnitsMixin, BaseModel):
     channels: t.Optional[t.List[bool]] = None
 
     def get(
-        self, phi: float = 0, amplitude_func: t.Callable = None, pad_time=0, return_freq: bool = False
+        self,
+        phi: float = 0,
+        amplitude_func: t.Callable = None,
+        pad_time=0,
+        return_freq: bool = False,
+        repeats: int = None,
     ) -> t.Tuple[np.ndarray, np.ndarray]:
         """Get the chirp time signal
 
@@ -29,8 +34,12 @@ class Chirp(IDMixin, GetUnitsMixin, BaseModel):
         amplitude_func : t.Callable, optional
             A function describing the amplitude as a function of frequency. E.g. lambda freq: freq**2.
             By default None
+        pad_time: float, optional
+            How much time to use to ramp up the signal at the start/end of the signal
         return_freq : bool, optional
             If True, will return times, frequency_at_time, signal. By default False
+        repeats : int, optional
+            How many times to repeat the chirp in the signal
 
         Returns
         -------
@@ -38,7 +47,14 @@ class Chirp(IDMixin, GetUnitsMixin, BaseModel):
             (times, data) OR (times, frequency_at_time, data)
         """
         r = make_multi_chirp(
-            self.frequencies, self.durations, self.samplerate, amplitude_func, phi, return_freq, pad_time=pad_time
+            self.frequencies,
+            self.durations,
+            self.samplerate,
+            amplitude_func,
+            phi,
+            return_freq,
+            pad_time=pad_time,
+            repeats=repeats,
         )
         r = list(r)
         # Expand the chirp to multiple channels

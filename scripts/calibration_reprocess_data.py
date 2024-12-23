@@ -36,7 +36,7 @@ cal.raw_data.load_wav(auren_files=cal.raw_data.file_meta_data, ref_files=cal.raw
 cal.calibration_smoothing_sigma = 9
 # cal.channels = [1, 2, 3]
 # cal.probe.mic_positions = cal.probe.mic_positions[2:] + cal.probe.mic_positions[:2]  # Nope
-# cal.noise_freq_threshold = 100 # 100
+cal.noise_freq_threshold = 100 # 100
 # cal.calibration_use_fft = False
 # cal.calibration_use_global_trim_offset = False
 cal.calibrate()
@@ -45,7 +45,7 @@ cal.calibrate()
 # Plots
 # cal.plot_calibration_data(show=True)
 cal.plot_calibration(show=False)
-cal.plot_calibration_checks(show=False)
+# cal.plot_calibration_checks(show=False)
 cal.save_calibration()
 
 # Load validation data
@@ -96,6 +96,15 @@ wai_f_micW, wai_p_micW = dft_known_basis(
     n_regions,
 )
 
+wai_f_auren2, wai_p_auren_raw2 = dft_known_basis(
+    wai_micW_wav_trim[0, 2:],
+    f_at_sample,
+    real_basis,
+    imag_basis,
+    block_size,
+    n_regions,
+)
+
 # First, check and plot the classical validation where we try to reproduce the micW measurement from the Auren
 auren_mic_x = cal.calibration.probe.get_unit("mic_positions")
 mic1 = 1
@@ -103,7 +112,7 @@ mic2 = 3
 cavern_model = model.TwoDiameterTube(
     auren_mic_x[mic1],
     auren_mic_x[mic2],
-    cal.raw_data.tubes[2][0].get_unit("probe_locations")[0],
+    cal.calibration.probe.get_unit("length"),
     cal.calibration.probe.get_unit("interior_diameter"),
     cal.raw_data.tubes[2][0].get_unit("interior_diameter"),
 )
@@ -125,6 +134,8 @@ axs[0].semilogx(
 axs[0].semilogx(wai_f_micW, todB(wai_p_micW), "C1", lw=2, label="Measured, MicW")
 axs[0].semilogx(wai_f_micW, todB(wai_p_auren[0, mic1]), "C2", lw=1, label="Mic %d" % mic1)
 axs[0].semilogx(wai_f_micW, todB(wai_p_auren[0, mic2]), "C3", lw=1, label="Mic %d" % mic1)
+axs[0].semilogx(wai_f_micW, todB(wai_p_auren_raw[0, mic1]), "C2:", lw=1, label="Mic %d" % mic1)
+axs[0].semilogx(wai_f_micW, todB(wai_p_auren_raw[0, mic2]), "C3:", lw=1, label="Mic %d" % mic1)
 axs[0].legend()
 axs[0].set_ylabel("Amplitude (dB SPL)")
 axs[0].set_xlabel("Frequency (Hz)")
@@ -133,7 +144,7 @@ axs[1].set_ylabel("Reference - Prediction (Difference of dB)")
 axs[1].set_xlabel("Frequency (Hz)")
 axs[1].set_ylim(-10, 10)
 axs[1].grid()
-# plt.show()
+plt.show()
 
 # Next, check the FPL speaker calibration -- see if that worked out (hoping it did)
 k = cavern_model.k(wai_f_auren * units("Hz"))
@@ -172,30 +183,29 @@ axs[1].legend()
 # Write out WAI chirp
 wai_test = wai.WAI(
     calibration=cal.calibration,
-    tone=odm.chirp.Chirp(durations=[10], frequencies=[200, 20000]),
+    frequencies = [200, 20000],
+    duration=10,
     level=65,
     pad_time=0.25
 )
-# wai_tone, wai_level_not_met, wai_weights = wai_test.make_tone()
-# wai_path = os.path.join(cal.out_path, 'protocol_wav', "PLAY1.WAV")
-# os.makedirs(os.path.split(wai_path)[0], exist_ok=True)
-# io.write_wav(wai_path, wai_tone[:, ::-1].copy(), wai_test.tone.samplerate, np.int16)
+wai_tone, wai_level_not_met, wai_weights = wai_test.make_tone()
+wai_path = os.path.join(cal.out_path, 'protocol_wav', "PLAY2.WAV")
+os.makedirs(os.path.split(wai_path)[0], exist_ok=True)
+io.write_wav(wai_path, wai_tone, wai_test.tone.samplerate, np.int16)
 # # ... and swept OAE chirp
-# dpoae_ratio = 1.2
-# dpoae_chirp = [
-#     odm.chirp.Chirp(durations=[10], frequencies=[200, 16000]),
-#     odm.chirp.Chirp(durations=[10], frequencies=[200 * dpoae_ratio, 16000 * dpoae_ratio])
-# ]
-# dpoae_test = dpoae_swept.DPOAE(
-#     calibration=cal.calibration,
-#     tones=dpoae_chirp,
-#     levels=[60, 65],
-#     pad_time=0.25
-# )
-# dpoae_tone = dpoae_test.make_tone()
-# dpoae_path = os.path.join(cal.out_path, 'protocol_wav', "PLAY2.WAV")
-# os.makedirs(os.path.split(dpoae_path)[0], exist_ok=True)
-# io.write_wav(dpoae_path, dpoae_tone[:, ::-1].copy(), dpoae_chirp[0].samplerate, np.int16)
+dpoae_test = dpoae_swept.DPOAE(
+    calibration=cal.calibration,
+    levels=[55, 65],
+    repeats=11,
+    duration=1,
+    dpoae_ratio = 1.2,
+    frequencies = [200, 20000],
+    pad_time=0.25
+)
+dpoae_tone = dpoae_test.make_tone()
+dpoae_path = os.path.join(cal.out_path, 'protocol_wav', "PLAY3.WAV")
+os.makedirs(os.path.split(dpoae_path)[0], exist_ok=True)
+io.write_wav(dpoae_path, dpoae_tone, dpoae_test.tones[0].samplerate, np.int16)
 
 
 # Analyze WAI data
