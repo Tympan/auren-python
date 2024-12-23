@@ -504,14 +504,17 @@ class Calibrate(BaseModel):
         axs[0].set_title("Relative Calibration")
         axs[1].semilogx(
             self.fourier_freq / 1000,
-            np.rad2deg(
+            -np.rad2deg(  # There is a negative sign that snuck in there somewhere... strange
                 np.angle(
                     self.rel_cal[..., self.channels]
                     / self.rel_cal[..., self.channels[:1]]
                     * np.abs(self.rel_cal[..., self.channels[:1]])
                 )
             ),
+            lw=4, alpha=0.5
         )
+        axs[1].set_prop_cycle(None)
+        axs[1].semilogx(self.cal[0, :, 0] / 1000, np.rad2deg(self.cal[self.channels, :, 2] - self.cal[self.channels[:1], :, 2]).T)
         ylims = axs[1].get_ylim()
         axs[1].semilogx([self.noise_freq_threshold / 1000] * 2, ylims, 'k', lw=5, alpha=0.3)
         axs[1].set_xlabel("Frequency(kHz)")
@@ -724,7 +727,7 @@ class Calibrate(BaseModel):
         rel_cal_ordered = np.ones((p.shape[-1], p.shape[-2]), rel_cal.dtype)
         rel_cal_ordered[:, channels] = rel_cal[:, -n_channels:]
 
-        # Just accept fate... and realize that phase below 1kHz is too noisy to calibrate
+        # Just accept fate... and realize that phase below noise_freq_threshold is too noisy to calibrate
         if self.noise_freq_threshold is not None:
             rel_cal_ordered[f <= self.noise_freq_threshold] = np.abs(rel_cal_ordered[f > self.noise_freq_threshold][0])
 
@@ -805,11 +808,11 @@ class Calibrate(BaseModel):
     def _combine_smooth_cal(self, f, rel_cal, abs_cal, channels, smoothing_factor):
         n_channels = rel_cal.shape[1]
 
-        phase = np.angle(rel_cal.T * abs_cal).T
+        phase = (rel_cal.T * abs_cal).T / np.abs((rel_cal.T * abs_cal).T)
         amp = np.abs(rel_cal)
 
-        mean_phase = np.nanmean(np.angle(rel_cal[..., channels]), -1, keepdims=True)
-        phase[..., channels] -= mean_phase  # Phases are relative, so we say that the average phase is 0
+        mean_phase = (np.nanmean(rel_cal[..., channels] / np.abs(rel_cal[..., channels]), -1, keepdims=True))
+        phase[..., channels] /= mean_phase  # Phases are relative, so we say that the average phase is 0
         mean_amp = np.nanmean(np.abs(rel_cal[..., channels]), -1, keepdims=True)
         amp[..., channels] -= mean_amp
 
@@ -820,7 +823,7 @@ class Calibrate(BaseModel):
         f_bins = np.logspace(np.log10(low_freq), np.log10(high_freq), N)
         f_center = (f_bins[1:] + f_bins[:-1]) / 2
         # average phase and amplitude into these bins
-        cal_phase_bin = np.zeros((N - 1, n_channels))
+        cal_phase_bin = np.zeros((N - 1, n_channels), dtype=phase.dtype)
         cal_amp_bin = np.zeros((N - 1, n_channels))
         # cal_phase_bin_mean = np.zeros((N - 1, n_channels))
         cal_amp_bin_mean = np.zeros((N - 1, n_channels))
@@ -842,11 +845,21 @@ class Calibrate(BaseModel):
 
         # Add the mean back in
         cal_amp_bin += cal_amp_bin_mean
-        # cal_phase_bin += cal_phase_bin_mean
+        # cal_phase_bin += cal_phase_bin_mean  # Not needed because phase is relative
 
         # Smooth the results
         sigma = smoothing_factor
         cal_phase_bin_smooth = ndimage.gaussian_filter1d(cal_phase_bin, sigma, mode="nearest", axis=0, truncate=2.5)
+        # Frequency-based smoothing
+        freq_weights = (np.log(f_center) - np.log(f_center[0])) / (np.log(f_center[-1]) - np.log(f_center[0]))
+        freq_weights = freq_weights[:, None]
+        cal_phase_bin_smooth = cal_phase_bin_smooth * (1 - freq_weights) + cal_phase_bin * freq_weights
+
+        # plt.semilogx(f, np.angle(phase), alpha=0.5, lw=4)
+        # plt.gca().set_prop_cycle(None)
+        # plt.semilogx(f_center, np.angle(cal_phase_bin_smooth))
+        # plt.show()
+
         cal_amp_bin_smooth = ndimage.gaussian_filter1d(cal_amp_bin, sigma, mode="nearest", axis=0, truncate=2.5)
         sigma = smoothing_factor / 2
         cal_abs_amp_bin_max = ndimage.maximum_filter1d(cal_abs_amp_bin, self.bin_oversampling, axis=0)
@@ -858,7 +871,7 @@ class Calibrate(BaseModel):
         cal = np.zeros((n_channels, N - 1, 3))
         cal[..., 0] = f_center
         cal[..., 1] = cal_amp_bin_smooth.T * cal_abs_amp_bin_smooth.T
-        cal[..., 2] = cal_phase_bin_smooth.T
+        cal[..., 2] = -np.angle(cal_phase_bin_smooth).T
         # No smoothing or averaging cal -- for debugging/consistency checks
         # cal = np.zeros((n_channels, f.size, 3))
         # cal[..., 0] = f
