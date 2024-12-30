@@ -59,7 +59,7 @@ class RawData(BaseModel):
 class FileMetaData(BaseModel):
     name: str
     tube: TubeGeometry
-    tone: Chirp
+    tone: t.Union[Chirp, t.Tuple[Chirp, Chirp]]
     used_for: t.Union[t.Literal["speaker"], t.Literal["mic"]] = "mic"
 
 

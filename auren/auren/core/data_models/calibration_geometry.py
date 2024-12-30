@@ -13,6 +13,7 @@ class TubeGeometry(IDMixin, GetUnitsMixin, BaseModel):
     length: float
     interior_diameter: float = 3.4
     probe_locations: t.List[float] = [0.4]
+    meta: str = ""
 
 
 # instantiate a set of standard geometries used by the Auren
@@ -53,6 +54,15 @@ simulator_1p26cc = TubeGeometry(
     # probe_locations=[0.4, 28.1],
     probe_locations=[28.5],
 )
+simulator_4157 = TubeGeometry(
+    units="mm",
+    type="closed",
+    length=28.5,
+    interior_diameter=7.5,
+    # probe_locations=[0.4, 28.1],
+    probe_locations=[28.5],
+    meta="B&K Ear Simulator 4157"
+)
 simulator_2cc = TubeGeometry(
     units="mm",
     type="closed",
@@ -61,3 +71,13 @@ simulator_2cc = TubeGeometry(
     # probe_locations=[0.4, 28.1],
     probe_locations=[28.5],
 )
+averaged_ear = TubeGeometry(
+    units="mm",
+    type="closed",
+    length=20,
+    interior_diameter=7.5,
+    probe_locations=[],
+    meta="Ear"
+)
+
+

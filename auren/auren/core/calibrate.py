@@ -21,6 +21,7 @@ class Calibrate(BaseModel):
     ### INPUTS section ###
 
     raw_data: t.Optional[dm.calibration.RawCalibrationData] = None
+    raw_validation_data: t.Optional[dm.calibration.RawCalibrationData] = None
     calibration_mic_tone_specs: dm.Chirp = dm.Chirp(
         durations=[5, 5], frequencies=[80, 1000, 21000], samplerate=96000, channels=[True, True]
     )
@@ -31,6 +32,7 @@ class Calibrate(BaseModel):
     calibration_pad_time: float = 0.25  # seconds
     calibration_ref_start_time_unknown: bool = False
     calibration_data_path: str = "calibration_data"
+    validation_data_path: str = "validation_data"
     calibration_tone_db: float = -10  # dB FS
     speaker_output_db: float = 65  # dB SPL
 
@@ -205,6 +207,84 @@ class Calibrate(BaseModel):
                 tube=tube, tone=tone, name=os.path.join(self.out_path, self.calibration_data_path, name)
             )
             self.raw_data.file_meta_data.append(spec)
+
+    def collect_validation_data(self, tube, tone, tone_id):
+        if not self._start_tone_played:
+            self._tympan.send_char("1")
+            self._start_tone_played = True
+            print(self._tympan.read_all(5))
+        print(self._tympan.read_all(0.5))
+
+        # For this data, we will record the filename, the tube, and the chirp, and add it to a list
+        if self.raw_validation_data is None:
+            self.raw_validation_data = dm.RawCalibrationData(file_meta_data=[], file_meta_data_ref=[])
+
+        # select the correct channels before playing
+        self._tympan.send_char("E")
+        print(self._tympan.read_all(1))
+        # Clear the buffer
+        print(self._tympan.read_all(1))
+        print("playing tone ", tone)
+        # send the play/record command
+        self._tympan.send_char(str(tone_id + 3))
+
+        # figure out the expected duration
+        try:
+            total_duration = np.sum(tone.durations)
+        except AttributeError:
+            # This is a list
+            total_duration = np.sum(tone[0].durations)
+
+
+        # Get the reply
+        reply = ""
+        count = 0
+        while "Auto-stopping SD recording of AUDIO" not in reply:
+            reply += self._tympan.read_all(0.5)
+            count += 1
+            if count > total_duration / 0.5 * 2:
+                break  # avoid infinite loops, allow twice the time
+
+        try:
+            name = "AUDIO" + reply.split("AUDIO")[1].split(".")[0] + ".WAV"
+            print("Success: ", reply)
+        except IndexError:
+            name = ["[error]"]
+            print("Error: ", reply)
+
+        print("Results saved in ", name)
+
+        spec = dm.FileMetaData(tube=tube, tone=tone, name=os.path.join(self.out_path, self.validation_data_path, name))
+        self.raw_validation_data.file_meta_data.append(spec)
+
+        # select the correct channels before playing
+        self._tympan.send_char("o")
+        print(self._tympan.read_all(1))
+        # Clear the buffer
+        print(self._tympan.read_all(4))
+        print("playing tone ", tone)
+        # send the play/record command
+        self._tympan.send_char(str(tone_id + 3))
+        # Get the reply
+        reply = self._tympan.read_all(0.5)
+        count = 0
+        while "Auto-stopping SD recording of AUDIO" not in reply:
+            reply += self._tympan.read_all(0.5)
+            count += 1
+            if count > total_duration / 0.5 * 2:
+                break  # avoid infinite loops, allow twice the time
+
+        try:
+            name = "AUDIO" + reply.split("AUDIO")[1].split(".")[0] + ".WAV"
+            print("Success: ", reply)
+
+        except IndexError:
+            print("Error: ", reply)
+
+        print("Results saved in ", name)
+
+        spec = dm.FileMetaData(tube=tube, tone=tone, name=os.path.join(self.out_path, self.validation_data_path, name))
+        self.raw_validation_data.file_meta_data_ref.append(spec)
 
     def make_cal_chirps(self) -> t.List[NDArray]:
         amp = 10 ** (self.calibration_tone_db / 20)
