@@ -1,6 +1,7 @@
 """
 Data models for calibration structures
 """
+
 import json
 import typing as t
 
@@ -70,10 +71,12 @@ class RawCalibrationData(BaseModel):
     # Since tones can be different lengths, the data is a different list for each tone
     data: t.Optional[t.List[NDArray[Shape["* tube, 4 channel, * signal"], float]]] = None
     tubes: t.Optional[t.List] = None
+    tones: t.Optional[t.List] = None
     samplerate_ref: t.Optional[int] = None
     # Since tones can be different lengths, the data is a different list for each tone
     data_ref: t.Optional[t.List[NDArray[Shape["* tube, * signal"], float]]] = None
     tubes_ref: t.Optional[t.List] = None
+    tones_ref: t.Optional[t.List] = None
 
     # Private variables
     _tones_dict: t.Optional[dict] = None
@@ -83,9 +86,16 @@ class RawCalibrationData(BaseModel):
     def time(self):
         return np.arange(self.data.shape[-1]) / self.samplerate
 
+    @staticmethod
+    def _get_tone_id(tone):
+        if hasattr(tone, "id"):
+            my_tone_id = tone.id
+        else:
+            my_tone_id = "_".join([tone0.id for tone0 in tone])
+        return my_tone_id
+
     def _load_files(self, files):
         timeseries = []
-        # tones = set()
         tones_dict = {}
         minsize = {}
         tubes_dict = {}
@@ -105,8 +115,9 @@ class RawCalibrationData(BaseModel):
                     )
             timeseries.append(data.T)
             # tones.add(file.tone.id)
-            tones_dict[file.tone.id] = set(list(tones_dict.get(file.tone.id, set())) + [file.tube.id])
-            minsize[file.tone.id] = min(data.shape[0], minsize.get(file.tone.id, np.inf))
+            my_tone_id = self._get_tone_id(file.tone)
+            tones_dict[my_tone_id] = set(list(tones_dict.get(my_tone_id, set())) + [file.tube.id])
+            minsize[my_tone_id] = min(data.shape[0], minsize.get(my_tone_id, np.inf))
             tubes_dict[file.tube.id] = file.tube
 
         # tubes = list(tubes)
@@ -120,26 +131,32 @@ class RawCalibrationData(BaseModel):
         tones_list = list(tones_dict.keys())
         tones_list.sort()  # For consistent ordering
         data = [np.zeros((len(tones_dict[tone]), timeseries[-1].shape[0], minsize[tone])) for tone in tones_list]
-        tube_objs = [[None] * len(tones_dict[tone]) for tone in tones_dict]
+        tube_objs = [[None] * len(tones_dict[tone]) for tone in tones_list]
+        tone_objs = [[None] * len(tones_dict[tone]) for tone in tones_list]
         for i, file in enumerate(files):
             # Enforce the same shape and populate the nice, standard data structure
             # tone_i = tones.index(file.tone.id)
-            tone_i = tones_list.index(file.tone.id)
+            my_tone_id = self._get_tone_id(file.tone)
 
-            tube_list = [til for til in tubes_id_list if til in tones_dict[file.tone.id]]
+            tone_i = tones_list.index(my_tone_id)
+
+            tube_list = [til for til in tubes_id_list if til in tones_dict[my_tone_id]]
             tube_i = tube_list.index(file.tube.id)
-            data[tone_i][tube_i] = timeseries[i][:, : minsize[file.tone.id]]
+            data[tone_i][tube_i] = timeseries[i][..., : minsize[my_tone_id]]
             tube_objs[tone_i][tube_i] = file.tube
+            tone_objs[tone_i][tube_i] = file.tone
 
-        return data, samplerate, tones_dict, tube_objs
+        return data, samplerate, tones_dict, tube_objs, tone_objs
 
     def load_wav(self, auren_files: t.List[FileMetaData] = None, ref_files: t.List[FileMetaData] = None):
         if auren_files is None:
             auren_files = self.file_meta_data
         if ref_files is None:
             ref_files = self.file_meta_data_ref
-        self.data, self.samplerate, self._tones_dict, self.tubes = self._load_files(auren_files)
-        self.data_ref, self.samplerate_ref, self._tones_dict_ref, self.tubes_ref = self._load_files(ref_files)
+        self.data, self.samplerate, self._tones_dict, self.tubes, self.tones = self._load_files(auren_files)
+        self.data_ref, self.samplerate_ref, self._tones_dict_ref, self.tubes_ref, self.tones_ref = self._load_files(
+            ref_files
+        )
         print("Done loading data.")
 
     def plot(self, kwargs=None, figkwargs=None, show=True):

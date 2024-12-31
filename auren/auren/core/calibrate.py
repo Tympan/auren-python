@@ -208,7 +208,7 @@ class Calibrate(BaseModel):
             )
             self.raw_data.file_meta_data.append(spec)
 
-    def collect_validation_data(self, tube, tone, tone_id):
+    def collect_validation_data(self, tube, tone, tone_id, repeats=1):
         if not self._start_tone_played:
             self._tympan.send_char("1")
             self._start_tone_played = True
@@ -230,10 +230,10 @@ class Calibrate(BaseModel):
 
         # figure out the expected duration
         try:
-            total_duration = np.sum(tone.durations)
+            total_duration = np.sum(tone.durations) * repeats
         except AttributeError:
             # This is a list
-            total_duration = np.sum(tone[0].durations)
+            total_duration = np.sum(tone[0].durations) * repeats
 
 
         # Get the reply
@@ -725,6 +725,116 @@ class Calibrate(BaseModel):
         if show:
             plt.show()
 
+    def plot_speaker_validation(self, tones, mic0=1, mic1=3, figkwargs={}, imkwargs={}, show=True):
+        gtid = self.raw_validation_data._get_tone_id
+        tone_hash = [gtid(t) for t in tones]
+        tone_ids = [i for i, tone in enumerate(self.raw_validation_data.tones) if gtid(tone[0]) in tone_hash]
+        # grab the subset of the data
+        sub_tubes = [self.raw_validation_data.tubes[i] for i in tone_ids]
+        sub_tube_ids = [[i for i, tube in enumerate(tubes)] for tubes in sub_tubes]
+        sub_tubes = [[self.raw_validation_data.tubes[i][j] for j in sub_tube_ids[ii]] for ii, i in enumerate(tone_ids)]
+        sub_data = [self.raw_validation_data.data[i][sub_tube_ids[ii]] for ii, i in enumerate(tone_ids)]
+        tones = [self.raw_validation_data.tones[i][0] for i in tone_ids]
+
+
+        # convert to fourier space, and calibrate
+        tone_freq = []
+        tone_p = []
+        for i, tone in enumerate(tones):
+            if isinstance(tone, (list, tuple)):
+                pp = []
+                ff = []
+                for tne in tone:
+                    f, p_raw = self._data_to_fourier(sub_data[i], tne)
+                    p = self.calibration.cal_p(f, p_raw)
+                    ff.append(f)
+                    pp.append(p)
+                tone_freq.append(ff)
+                tone_p.append(pp)
+            else:
+                f, p_raw = self._data_to_fourier(sub_data[i], tone)
+                p = self.calibration.cal_p(f, p_raw)
+                tone_freq.append([f])
+                tone_p.append([p])
+
+
+        fig, axs = plt.subplots(len(sub_tubes[0]), len(tones), sharex=True, sharey=True)
+        fig.suptitle("Validation Check of the Speaker Calibration (output amplitude)")
+        figR, axsR = plt.subplots(len(sub_tubes[0]), len(tones), sharex=True, sharey=True)
+        figR.suptitle("Validation Check of the Speaker Calibration (Reflectance)")
+        mic_xs = self.calibration.probe.get_unit("mic_positions")
+        for i in range(len(sub_tubes[0])):
+            for j in range(len(tones)):
+                tube = sub_tubes[j][i]
+                my_tones = tones[j]
+                if not isinstance(my_tones, (tuple, list)):
+                    my_tones = [my_tones]
+
+                cavern_model = model.TwoDiameterTube(
+                    mic_xs[mic0],
+                    mic_xs[mic1],
+                    self.calibration.probe.get_unit("length"),
+                    self.calibration.probe.get_unit("interior_diameter"),
+                    tube.get_unit("interior_diameter"),
+                )
+                line_styles = ['-', '--', ':']
+                for ii, my_tone in enumerate(my_tones):
+                    f = tone_freq[j][ii]
+                    k = cavern_model.k(f * auren.units("Hz"))
+                    A0_predict = cavern_model.A0_measured(
+                        k,
+                        p0=tone_p[j][ii][i, mic0],
+                        p1=tone_p[j][ii][i, mic1],
+                    )
+                    B0_predict = cavern_model.B0_measured(
+                        k,
+                        p0=p[0, mic0],
+                        p1=p[0, mic1],
+                    )
+                    # levels
+                    axs[i, j].semilogx(f, todB(A0_predict), line_styles[ii], label="forward")
+                    axs[i, j].semilogx(f, todB(B0_predict), line_styles[ii], label="reverse")
+                    axs[i, j].set_ylabel(f"Amplitude (dB SPL) \n({tube.interior_diameter}mm {tube.meta if tube.meta else 'Tube'})")
+                    axs[-1, j].set_xlabel("Frequency (Hz)")
+                    axs[i, j].grid()
+                    axs[i, j].legend()
+                    axs[i, j].set_title(f"Tone {j}: " + str(my_tone.frequencies))
+
+                    axsR[i, j].semilogx(f, np.abs(B0_predict/A0_predict), line_styles[ii]+"C0", lw=2, label="Reflectance")
+                    axsR[i, j].semilogx(f, f*0, "k-", lw=1)
+                    axsR[i, j].semilogx(f, f*0 + 1, "k-", lw=1)
+                    axsR[i, j].set_ylim(-0.10, 1.10)
+                    axsR[i, j].set_ylabel(f"Reflectance + tube {i} \n({tube.interior_diameter}mm {tube.meta if tube.meta else 'Tube'})")
+                    axsR[i, j].set_title(f"Tone {j}: " + str(my_tone.frequencies))
+                    axsR[i, j].grid()
+                    axsR[-1, j].set_xlabel("Frequency (Hz)")
+        fig.tight_layout()
+        figR.tight_layout()
+        if show:
+            plt.show()
+
+
+    def plot_pressure_validation(tones):
+        gtid = self.raw_validation_data._get_tone_id
+        tone_hash = [gtid(t) for t in tones]
+        tone_ids = [i for i, tone in enumerate(self.raw_validation_data.tones) if gtid(tone[0]) in tone_hash]
+        # grab the subset of the data
+        sub_tubes = [self.raw_validation_data.tubes[i] for i in tone_ids]
+        sub_tube_ids = [[i for i, tube in enumerate(tubes) if tube.probe_locations] for tubes in sub_tubes]
+        sub_tubes = [[self.raw_validation_data.tubes[i][j] for j in sub_tube_ids[ii]] for ii, i in enumerate(tone_ids)]
+        sub_data = [self.raw_validation_data.data[i][sub_tube_ids[ii]] for ii, i in enumerate(tone_ids)]
+        tones = [self.raw_validation_data.tones[i][0] for i in tone_ids]
+        # grab the subset of the reference data
+        tone_ids_ref = [i for i, tone in enumerate(self.raw_validation_data.tones_ref) if gtid(tone[0]) in tone_hash]
+        sub_ref_tubes = [self.raw_validation_data.tubes_ref[i] for i in tone_ids_ref]
+        sub_ref_tube_ids = [[i for i, tube in enumerate(tubes) if tube.probe_locations] for tubes in sub_ref_tubes]
+        sub_ref_tubes = [[self.raw_validation_data.tubes_ref[i][j] for j in sub_ref_tube_ids[ii]] for ii, i in enumerate(tone_ids_ref)]
+        sub_ref_data = [self.raw_validation_data.data_ref[i][sub_ref_tube_ids[ii]] for ii, i in enumerate(tone_ids_ref)]
+        tones_ref = [self.raw_validation_data.tones_ref[i][0] for i in tone_ids_ref]
+
+        # Now the Auren data and reference data are aligned
+
+
     ######## PRIVATE METHODS
     def _trim_data(self, data, real_basis, imag_basis, f_at_sample, n_samples, trim_freq):
         return trim_signal_max_correlation_at_f(
@@ -1029,3 +1139,37 @@ class Calibrate(BaseModel):
             # plt.show()
 
         return speaker_cal
+
+    def _data_to_fourier(self, data, tone):
+        real_basis = tone.get()
+        imag_basis = tone.get(phi=np.pi / 2)
+        f_at_sample = tone.get(return_freq=True)[2]
+
+        trim_freq = f_at_sample.min() * 0.25 + f_at_sample.max() * 0.75
+
+        if tone.channels is not None:
+            chnls = tone.channels
+            real_basis[1] = real_basis[1][:, chnls]
+            imag_basis[1] = imag_basis[1][:, chnls]
+        else:
+            real_basis[1] = real_basis[1][:, None]
+            imag_basis[1] = imag_basis[1][:, None]
+
+        n_samples = real_basis[0].shape[-1]
+        # Trim the data
+        trimmed_data, _ = self._trim_data(
+            data,
+            real_basis,
+            imag_basis,
+            f_at_sample,
+            n_samples,
+            trim_freq=trim_freq,
+        )
+        f_centers, fourier = self._fourier_transform_raw_data(
+            trimmed_data,
+            real_basis,
+            imag_basis,
+            f_at_sample,
+            n_samples,
+        )
+        return f_centers, fourier

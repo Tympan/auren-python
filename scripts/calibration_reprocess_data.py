@@ -16,7 +16,7 @@ except:
     pass
 
 cal = Calibrate(
-    out_path='./calibrate_2024_12',
+    out_path='./calibrate_2025_01',
     ref_mic_sensitivity=9.8,  # mv/Pa
 
 )
@@ -49,6 +49,45 @@ cal.plot_calibration(show=False)
 cal.save_calibration()
 
 # Load validation data
+with open(os.path.join(cal.out_path, "validation_data", "rawdata.json"), "r", encoding='utf-8') as fid:
+    raw_validation_data = json.loads(fid.read())
+    raw_validation_data["data"] = []
+    raw_validation_data["data_ref"] = []
+    raw_validation_data = odm.RawCalibrationData(**raw_validation_data)
+cal.raw_validation_data = raw_validation_data
+cal.raw_validation_data.load_wav(auren_files=cal.raw_validation_data.file_meta_data, ref_files=cal.raw_validation_data.file_meta_data_ref)
+
+
+wai_test = wai.WAI(
+    calibration=cal.calibration,
+    frequencies = [200, 20000],
+    duration=10,
+    level=65,
+    pad_time=0.25
+)
+dpoae_test = dpoae_swept.DPOAE(
+    calibration=cal.calibration,
+    levels=[55, 65],
+    repeats=11,
+    duration=1,
+    dpoae_ratio = 1.2,
+    frequencies = [200, 20000],
+    pad_time=0.25
+)
+
+cal.plot_speaker_validation(tones=[wai_test.tone, dpoae_test.tones], show=True)
+self=cal
+stop
+
+## NEXT STEPS:
+# For validation data...
+# For validation tubes + MicW & earsimulator+B&K, same analysis (mostly implemented piecewise below -- consolidate)
+#   1. Figure out the FPL -- make sure it's flat, for both chirps (no measurement needed, only last DPOAE+WAI chirps)
+#   2. Figure out the predicted pressure, compared to measured -- all 3 chirps
+# For any 'ear-type' tubes (already implemented)
+#   1. Figure the WAI for WAI tones
+#   2. Figure the DPOAE for DPOAE tones
+
 wai_auren_path = os.path.join(cal.out_path, 'validation_data', "AUDIO011.WAV")
 wai_micW_path = os.path.join(cal.out_path, 'validation_data', "AUDIO013.WAV")
 # wai_auren_path = os.path.join(cal.out_path, 'validation_data', "AUDIO012.WAV")
