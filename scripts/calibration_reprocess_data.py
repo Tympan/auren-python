@@ -75,18 +75,20 @@ dpoae_test = dpoae_swept.DPOAE(
     pad_time=0.25
 )
 
-cal.plot_speaker_validation(tones=[wai_test.tone, dpoae_test.tones], show=True)
+cal.plot_speaker_validation(tones=[wai_test.tone, dpoae_test.tones], show=False)
+# cal.plot_speaker_validation(tones=[cal.calibration_mic_tone_specs], show=True)
+cal.plot_pressure_validation(show=True)
 self=cal
+
 stop
 
 ## NEXT STEPS:
-# For validation data...
-# For validation tubes + MicW & earsimulator+B&K, same analysis (mostly implemented piecewise below -- consolidate)
-#   1. Figure out the FPL -- make sure it's flat, for both chirps (no measurement needed, only last DPOAE+WAI chirps)
-#   2. Figure out the predicted pressure, compared to measured -- all 3 chirps
 # For any 'ear-type' tubes (already implemented)
 #   1. Figure the WAI for WAI tones
 #   2. Figure the DPOAE for DPOAE tones
+# TO DEBUG:
+# DPOAE second frequency is NOT at 55dB! it's still at 65 DB! UGH! (check analysis)
+# B&K raw data is truncated because of how it gets loaded initially -- manually trim?
 
 wai_auren_path = os.path.join(cal.out_path, 'validation_data', "AUDIO011.WAV")
 wai_micW_path = os.path.join(cal.out_path, 'validation_data', "AUDIO013.WAV")

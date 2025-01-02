@@ -808,31 +808,116 @@ class Calibrate(BaseModel):
                     axsR[i, j].set_title(f"Tone {j}: " + str(my_tone.frequencies))
                     axsR[i, j].grid()
                     axsR[-1, j].set_xlabel("Frequency (Hz)")
+                axs[i, -1].grid()
+                axsR[i, -1].grid()
         fig.tight_layout()
         figR.tight_layout()
         if show:
             plt.show()
 
 
-    def plot_pressure_validation(tones):
+    def plot_pressure_validation(self, mic0=1, mic1=3, show=True):
         gtid = self.raw_validation_data._get_tone_id
-        tone_hash = [gtid(t) for t in tones]
-        tone_ids = [i for i, tone in enumerate(self.raw_validation_data.tones) if gtid(tone[0]) in tone_hash]
+
+        tone_ids = [i for i, tone in enumerate(self.raw_validation_data.tones)]
         # grab the subset of the data
         sub_tubes = [self.raw_validation_data.tubes[i] for i in tone_ids]
         sub_tube_ids = [[i for i, tube in enumerate(tubes) if tube.probe_locations] for tubes in sub_tubes]
         sub_tubes = [[self.raw_validation_data.tubes[i][j] for j in sub_tube_ids[ii]] for ii, i in enumerate(tone_ids)]
         sub_data = [self.raw_validation_data.data[i][sub_tube_ids[ii]] for ii, i in enumerate(tone_ids)]
         tones = [self.raw_validation_data.tones[i][0] for i in tone_ids]
-        # grab the subset of the reference data
-        tone_ids_ref = [i for i, tone in enumerate(self.raw_validation_data.tones_ref) if gtid(tone[0]) in tone_hash]
-        sub_ref_tubes = [self.raw_validation_data.tubes_ref[i] for i in tone_ids_ref]
-        sub_ref_tube_ids = [[i for i, tube in enumerate(tubes) if tube.probe_locations] for tubes in sub_ref_tubes]
-        sub_ref_tubes = [[self.raw_validation_data.tubes_ref[i][j] for j in sub_ref_tube_ids[ii]] for ii, i in enumerate(tone_ids_ref)]
-        sub_ref_data = [self.raw_validation_data.data_ref[i][sub_ref_tube_ids[ii]] for ii, i in enumerate(tone_ids_ref)]
-        tones_ref = [self.raw_validation_data.tones_ref[i][0] for i in tone_ids_ref]
 
-        # Now the Auren data and reference data are aligned
+        # grab the subset of the reference data aligned with the other auren data
+        sub_ref_data = [[None] * len(sd) for sd in sub_data]
+        for i, subdat in enumerate(sub_data):
+            ref_tone_ind = [ii for ii, tone in enumerate(self.raw_validation_data.tones_ref) if gtid(tone[0]) == gtid(tones[i])][0]
+            for j in range(len(subdat)):
+                ref_tube_ind = [ii for ii, tube in enumerate(self.raw_validation_data.tubes_ref[ref_tone_ind]) if tube.id == sub_tubes[i][j].id][0]
+                sub_ref_data[i][j] = self.raw_validation_data.data_ref[ref_tone_ind][ref_tube_ind]
+
+        # Make all the tones into list of tone to reduce code repetition
+        for i in range(len(tones)):
+            if not isinstance(tones[i], (tuple, list)):
+                tones[i] = [tones[i]]
+
+        # Now the Auren data and reference data are aligned.
+        # convert to fourier space, and calibrate
+        tone_freq = []
+        tone_p = []
+        tone_p_ref = []
+        for i, tone in enumerate(tones):
+            pp = []
+            ff = []
+            pp_ref = []
+            for tne in tone:
+                f, p_raw = self._data_to_fourier(sub_data[i], tne)
+                p = self.calibration.cal_p(f, p_raw)
+                ff.append(f)
+                pp.append(p)
+
+                # Need to loop through the tubes because the B&K uses a different calibration
+                pp_ref2 = [None] * len(sub_tubes[i])
+                for j, tube in enumerate(sub_tubes[i]):
+                    my_data = sub_ref_data[i][j][None, :1, :]
+                    if "B&K" not in tube.meta:  # B&K come pre-calibrated because when loading the wav it read the .dat file
+                        my_data = my_data * self.tympan_full_scale_voltage / self.ref_mic_sensitivity * 1000
+                    f, p_ref = self._data_to_fourier(my_data, tne)
+                    pp_ref2[j] = p_ref[0]
+                pp_ref.append(np.stack(pp_ref2, axis=0))
+            tone_freq.append(ff)
+            tone_p.append(pp)
+            tone_p_ref.append(pp_ref)
+
+        # Now, predict the pressure of the reference on-the-fly and plot
+        fig, axs = plt.subplots(len(sub_tubes[0]), len(tones), sharex=True, sharey=True)
+        fig.suptitle("Validation Check if Predicted pressure == reference mic (Absolute)")
+        figR, axsR = plt.subplots(len(sub_tubes[0]), len(tones), sharex=True, sharey=True)
+        figR.suptitle("Validation Check if Predicted pressure == reference mic (Difference [pred - ref])")
+        mic_xs = self.calibration.probe.get_unit("mic_positions")
+        for i, tube in enumerate(sub_tubes[0]):
+            cavern_model = model.TwoDiameterTube(
+                mic_xs[mic0],
+                mic_xs[mic1],
+                self.calibration.probe.get_unit("length"),
+                self.calibration.probe.get_unit("interior_diameter"),
+                tube.get_unit("interior_diameter"),
+            )
+            x_ref = tube.get_unit("probe_locations")[0] + self.calibration.probe.get_unit("length")
+            if "B&K" in tube.meta:
+                x_ref = tube.get_unit("probe_locations")[0] + self.calibration.probe.get_unit("length_with_tip")
+
+            for j, my_tones in enumerate(tones):
+                line_styles = ['-', '--', ':']
+                for ii, my_tone in enumerate(my_tones):
+                    f = tone_freq[j][ii]
+                    p0_predict = cavern_model.p_measured(
+                        f * auren.units("Hz"),
+                        x=x_ref,
+                        p0=tone_p[j][ii][i, mic0],
+                        p1=tone_p[j][ii][i, mic1],
+                    )
+                    # levels
+                    axs[i, j].semilogx(f, todB(p0_predict), line_styles[ii], label="predicted")
+                    axs[i, j].semilogx(f, todB(tone_p_ref[j][ii][i, 0]), line_styles[ii], label="reference")
+                    axs[i, 0].set_ylabel(f"Amplitude (dB SPL) \n({tube.interior_diameter}mm {tube.meta if tube.meta else 'Tube'})")
+                    axs[-1, j].set_xlabel("Frequency (Hz)")
+                    axs[i, j].legend()
+                    axs[i, j].set_title(f"Tone {j}: " + str(my_tone.frequencies))
+                    axs[i, j].grid()
+
+                    axsR[i, j].semilogx(f, todB(p0_predict) - todB(tone_p_ref[j][ii][i, 0]), line_styles[ii]+"C0", lw=2)
+                    axsR[i, j].semilogx(f, f*0, "k-", lw=1)
+                    axsR[i, j].set_ylim(-12, 12)
+                    axsR[i, 0].set_ylabel(f"Difference (dB) \n({tube.interior_diameter}mm {tube.meta if tube.meta else 'Tube'})")
+                    axsR[i, j].set_title(f"Tone {j}: " + str(my_tone.frequencies))
+                    axsR[-1, j].set_xlabel("Frequency (Hz)")
+                    axsR[i, j].grid()
+                axsR[i, -1].grid()
+                axs[i, -1].grid()
+        fig.tight_layout()
+        figR.tight_layout()
+        if show:
+            plt.show()
 
 
     ######## PRIVATE METHODS

@@ -81,7 +81,7 @@ class DPOAE(BaseModel):
         calibration = self.calibration
 
         # Create the full-scaled amplitude functions fs frequency for each speaker
-        amp_funcs = [calibration.cal_speaker(level)[i] for i,level in enumerate(levels)]
+        amp_funcs = [calibration.cal_speaker(level)[i] for i, level in enumerate(levels)]
         # Generate the chirps, where each speaker tries to produce the full-scale sound
         chirps = [
             tone.get(phi, amplitude_func=amp_func, pad_time=pad_time, repeats=self.repeats, return_freq=True)
