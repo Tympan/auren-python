@@ -74,10 +74,15 @@ dpoae_test = dpoae_swept.DPOAE(
     frequencies = [200, 20000],
     pad_time=0.25
 )
+figkwargs=dict(figsize=(6.5, 6.5*1.25), dpi=100)
+cal.plot_speaker_validation(
+    tones=[
+        wai_test.tone,
+        dpoae_test.tones
+    ], show=False, figkwargs=figkwargs)
 
-cal.plot_speaker_validation(tones=[wai_test.tone, dpoae_test.tones], show=False)
 # cal.plot_speaker_validation(tones=[cal.calibration_mic_tone_specs], show=True)
-cal.plot_pressure_validation(show=True)
+cal.plot_pressure_validation(show=False, figkwargs=figkwargs)
 
 # Finally, let's look at the WAI for the ear and the B&K
 
@@ -106,7 +111,7 @@ for i, tone in enumerate(cal.raw_validation_data.tones):
         axs[1, 1].semilogx(hp_f, np.rad2deg(np.angle(hp_Z)))
         axs[0, 1].legend(["Auren", "Hot Probe"])
         axs[0, 0].set_xlim(200, 20000)
-plt.show()
+# plt.show()
 
 # DPOAE
 for i, tone in enumerate(cal.raw_validation_data.tones):

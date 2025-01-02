@@ -744,23 +744,24 @@ class Calibrate(BaseModel):
             if isinstance(tone, (list, tuple)):
                 pp = []
                 ff = []
-                for tne in tone:
-                    f, p_raw = self._data_to_fourier(sub_data[i], tne)
+                trimmed_data = None
+                for tne in tone[::-1]:  # THIS IS A HACK! We need to reverse so that louder F trims the data
+                    f, p_raw, trimmed_data = self._data_to_fourier(sub_data[i], tne, trimmed_data)
                     p = self.calibration.cal_p(f, p_raw)
                     ff.append(f)
                     pp.append(p)
                 tone_freq.append(ff)
                 tone_p.append(pp)
             else:
-                f, p_raw = self._data_to_fourier(sub_data[i], tone)
+                f, p_raw, _ = self._data_to_fourier(sub_data[i], tone)
                 p = self.calibration.cal_p(f, p_raw)
                 tone_freq.append([f])
                 tone_p.append([p])
 
 
-        fig, axs = plt.subplots(len(sub_tubes[0]), len(tones), sharex=True, sharey=True)
+        fig, axs = plt.subplots(len(sub_tubes[0]), len(tones), sharex=True, sharey=True, **figkwargs)
         fig.suptitle("Validation Check of the Speaker Calibration (output amplitude)")
-        figR, axsR = plt.subplots(len(sub_tubes[0]), len(tones), sharex=True, sharey=True)
+        figR, axsR = plt.subplots(len(sub_tubes[0]), len(tones), sharex=True, sharey=True, **figkwargs)
         figR.suptitle("Validation Check of the Speaker Calibration (Reflectance)")
         mic_xs = self.calibration.probe.get_unit("mic_positions")
         for i in range(len(sub_tubes[0])):
@@ -794,20 +795,22 @@ class Calibrate(BaseModel):
                     # levels
                     axs[i, j].semilogx(f, todB(A0_predict), line_styles[ii], label="forward")
                     axs[i, j].semilogx(f, todB(B0_predict), line_styles[ii], label="reverse")
-                    axs[i, j].set_ylabel(f"Amplitude (dB SPL) \n({tube.interior_diameter}mm {tube.meta if tube.meta else 'Tube'})")
+                    axs[0, j].legend()
+                    axs[i, 0].set_ylabel(f"Amplitude (dB SPL) \n({tube.interior_diameter}mm {tube.meta if tube.meta else 'Tube'})")
                     axs[-1, j].set_xlabel("Frequency (Hz)")
                     axs[i, j].grid()
-                    axs[i, j].legend()
                     axs[i, j].set_title(f"Tone {j}: " + str(my_tone.frequencies))
 
                     axsR[i, j].semilogx(f, np.abs(B0_predict/A0_predict), line_styles[ii]+"C0", lw=2, label="Reflectance")
                     axsR[i, j].semilogx(f, f*0, "k-", lw=1)
                     axsR[i, j].semilogx(f, f*0 + 1, "k-", lw=1)
                     axsR[i, j].set_ylim(-0.10, 1.10)
-                    axsR[i, j].set_ylabel(f"Reflectance + tube {i} \n({tube.interior_diameter}mm {tube.meta if tube.meta else 'Tube'})")
+                    axsR[i, 0].set_ylabel(f"Reflectance + tube {i} \n({tube.interior_diameter}mm {tube.meta if tube.meta else 'Tube'})")
                     axsR[i, j].set_title(f"Tone {j}: " + str(my_tone.frequencies))
                     axsR[i, j].grid()
                     axsR[-1, j].set_xlabel("Frequency (Hz)")
+                axs[i, j].semilogx(f, f*0 + 65, line_styles[ii] + 'k', lw=3, alpha=0.25)
+                axs[i, j].semilogx(f, f*0 + 55, line_styles[ii] + 'k', lw=3, alpha=0.25)
                 axs[i, -1].grid()
                 axsR[i, -1].grid()
         fig.tight_layout()
@@ -816,7 +819,7 @@ class Calibrate(BaseModel):
             plt.show()
 
 
-    def plot_pressure_validation(self, mic0=1, mic1=3, show=True):
+    def plot_pressure_validation(self, mic0=1, mic1=3, show=True, figkwargs={}):
         gtid = self.raw_validation_data._get_tone_id
 
         tone_ids = [i for i, tone in enumerate(self.raw_validation_data.tones)]
@@ -849,8 +852,9 @@ class Calibrate(BaseModel):
             pp = []
             ff = []
             pp_ref = []
+            trimmed_data = None
             for tne in tone:
-                f, p_raw = self._data_to_fourier(sub_data[i], tne)
+                f, p_raw, trimmed_data = self._data_to_fourier(sub_data[i], tne, trimmed_data)
                 p = self.calibration.cal_p(f, p_raw)
                 ff.append(f)
                 pp.append(p)
@@ -861,7 +865,7 @@ class Calibrate(BaseModel):
                     my_data = sub_ref_data[i][j][None, :1, :]
                     if "B&K" not in tube.meta:  # B&K come pre-calibrated because when loading the wav it read the .dat file
                         my_data = my_data * self.tympan_full_scale_voltage / self.ref_mic_sensitivity * 1000
-                    f, p_ref = self._data_to_fourier(my_data, tne)
+                    f, p_ref, _ = self._data_to_fourier(my_data, tne)
                     pp_ref2[j] = p_ref[0]
                 pp_ref.append(np.stack(pp_ref2, axis=0))
             tone_freq.append(ff)
@@ -869,9 +873,9 @@ class Calibrate(BaseModel):
             tone_p_ref.append(pp_ref)
 
         # Now, predict the pressure of the reference on-the-fly and plot
-        fig, axs = plt.subplots(len(sub_tubes[0]), len(tones), sharex=True, sharey=True)
+        fig, axs = plt.subplots(len(sub_tubes[0]), len(tones), sharex=True, sharey=True, **figkwargs)
         fig.suptitle("Validation Check if Predicted pressure == reference mic (Absolute)")
-        figR, axsR = plt.subplots(len(sub_tubes[0]), len(tones), sharex=True, sharey=True)
+        figR, axsR = plt.subplots(len(sub_tubes[0]), len(tones), sharex=True, sharey=True, **figkwargs)
         figR.suptitle("Validation Check if Predicted pressure == reference mic (Difference [pred - ref])")
         mic_xs = self.calibration.probe.get_unit("mic_positions")
         for i, tube in enumerate(sub_tubes[0]):
@@ -1225,12 +1229,11 @@ class Calibrate(BaseModel):
 
         return speaker_cal
 
-    def _data_to_fourier(self, data, tone):
+    def _data_to_fourier(self, data, tone, trimmed_data=None):
         real_basis = tone.get()
         imag_basis = tone.get(phi=np.pi / 2)
         f_at_sample = tone.get(return_freq=True)[2]
 
-        trim_freq = f_at_sample.min() * 0.25 + f_at_sample.max() * 0.75
 
         if tone.channels is not None:
             chnls = tone.channels
@@ -1242,14 +1245,16 @@ class Calibrate(BaseModel):
 
         n_samples = real_basis[0].shape[-1]
         # Trim the data
-        trimmed_data, _ = self._trim_data(
-            data,
-            real_basis,
-            imag_basis,
-            f_at_sample,
-            n_samples,
-            trim_freq=trim_freq,
-        )
+        if trimmed_data is None:
+            trim_freq = tone.frequencies[0] * 0.25 + tone.frequencies[-1] * 0.75
+            trimmed_data, _ = self._trim_data(
+                data,
+                real_basis,
+                imag_basis,
+                f_at_sample,
+                n_samples,
+                trim_freq=trim_freq,
+            )
         f_centers, fourier = self._fourier_transform_raw_data(
             trimmed_data,
             real_basis,
@@ -1257,4 +1262,4 @@ class Calibrate(BaseModel):
             f_at_sample,
             n_samples,
         )
-        return f_centers, fourier
+        return f_centers, fourier, trimmed_data
