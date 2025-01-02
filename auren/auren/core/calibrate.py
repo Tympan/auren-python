@@ -853,7 +853,7 @@ class Calibrate(BaseModel):
             ff = []
             pp_ref = []
             trimmed_data = None
-            for tne in tone:
+            for tne in tone[::-1]:  # THIS IS A HACK! We need to reverse so that louder F trims the data
                 f, p_raw, trimmed_data = self._data_to_fourier(sub_data[i], tne, trimmed_data)
                 p = self.calibration.cal_p(f, p_raw)
                 ff.append(f)
